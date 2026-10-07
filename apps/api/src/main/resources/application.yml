@@ -1,0 +1,59 @@
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: ${SERVER_PORT:8080}
+spring:
+  application:
+    name: signalframe
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/signalframe}
+    username: ${DATABASE_USER:signalframe}
+    password: ${POSTGRES_PASSWORD:local-development-only}
+  flyway:
+    enabled: true
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+logging:
+  structured:
+    format:
+      console: ecs
+ai:
+  default-profile: ${AI_DEFAULT_PROFILE:analysis.fast}
+  routes:
+    FAST_ANALYSIS: analysis.fast
+    DEEP_ANALYSIS: analysis.deep
+    FACT_EXTRACTION: analysis.fast
+    CLASSIFICATION: analysis.fast
+    COUNTER_ARGUMENT: analysis.deep
+    SYNTHESIS: ${AI_DEFAULT_PROFILE:analysis.fast}
+  profiles:
+    "[analysis.fast]":
+      provider: ${AI_FAST_PROVIDER:mock}
+      model: ${AI_FAST_MODEL:mock-v1}
+      base-url: ${AI_FAST_BASE_URL:https://api.deepseek.com}
+      api-key-env: AI_FAST_API_KEY
+      temperature: 0.2
+      max-tokens: 4096
+      timeout: 45
+      structured-output: true
+      tool-calling: false
+      enabled: true
+    "[analysis.deep]":
+      provider: ${AI_DEEP_PROVIDER:mock}
+      model: ${AI_DEEP_MODEL:mock-v1}
+      base-url: ${AI_DEEP_BASE_URL:https://api.deepseek.com}
+      api-key-env: AI_DEEP_API_KEY
+      temperature: 0.2
+      max-tokens: 8192
+      timeout: 90
+      structured-output: true
+      tool-calling: false
+      enabled: true

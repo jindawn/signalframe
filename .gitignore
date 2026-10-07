@@ -1,0 +1,10 @@
+.env
+.tools/
+node_modules/
+.next/
+target/
+playwright-report/
+test-results/
+*.log
+.DS_Store
+*.tsbuildinfo

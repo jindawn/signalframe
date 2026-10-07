@@ -1,0 +1,37 @@
+{
+  "date": "2026-10-07",
+  "timezone": "Asia/Shanghai",
+  "foundationGate": {
+    "passed": 24,
+    "failed": 0
+  },
+  "backend": {
+    "tests": 7,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "build": "PASS",
+    "database": "actual PostgreSQL Testcontainers + Flyway"
+  },
+  "frontend": {
+    "lint": "PASS",
+    "typecheck": "PASS",
+    "unitTests": 1,
+    "build": "PASS"
+  },
+  "contract": {
+    "openapiValidation": "PASS",
+    "generatedDrift": "PASS"
+  },
+  "browser": {
+    "tests": 6,
+    "passed": 6,
+    "elapsedSeconds": 4.3,
+    "projects": ["desktop-chromium", "mobile-chromium", "mobile-webkit"],
+    "actualApiAndDatabase": true
+  },
+  "livePaidModelTested": false,
+  "globalConfigChanged": false,
+  "committed": false,
+  "pushed": false
+}

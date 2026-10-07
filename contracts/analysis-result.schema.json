@@ -1,0 +1,1359 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Generated from OpenAPI; do not edit.",
+  "allOf": [
+    {
+      "$ref": "#/components/schemas/AnalysisResult"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "ClaimType": {
+        "type": "string",
+        "enum": [
+          "FACT",
+          "INFERENCE",
+          "HYPOTHESIS",
+          "PREDICTION"
+        ]
+      },
+      "DomainType": {
+        "type": "string",
+        "enum": [
+          "TECH",
+          "AI",
+          "BUSINESS",
+          "FINANCE",
+          "MACRO",
+          "POLICY",
+          "GEOPOLITICS",
+          "REAL_ESTATE",
+          "ENERGY",
+          "CONSUMER",
+          "HEALTHCARE",
+          "EMPLOYMENT",
+          "OTHER"
+        ]
+      },
+      "NewsGrade": {
+        "type": "string",
+        "enum": [
+          "C",
+          "B",
+          "A",
+          "S"
+        ]
+      },
+      "JobStatus": {
+        "type": "string",
+        "enum": [
+          "QUEUED",
+          "NORMALIZING",
+          "EXTRACTING_FACTS",
+          "ANALYZING",
+          "GENERATING_HYPOTHESES",
+          "VERIFYING",
+          "SYNTHESIZING",
+          "COMPLETED",
+          "FAILED"
+        ]
+      },
+      "ModelPurpose": {
+        "type": "string",
+        "enum": [
+          "FAST_ANALYSIS",
+          "DEEP_ANALYSIS",
+          "FACT_EXTRACTION",
+          "CLASSIFICATION",
+          "COUNTER_ARGUMENT",
+          "SYNTHESIS"
+        ]
+      },
+      "SourceRef": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sourceId",
+          "quote",
+          "startOffset",
+          "endOffset"
+        ],
+        "properties": {
+          "sourceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "startOffset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "endOffset": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "Statement": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "statement",
+          "reasoning",
+          "confidence",
+          "sourceRefs"
+        ],
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ClaimType"
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "reasoning": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "confidence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "sourceRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            }
+          }
+        }
+      },
+      "Fact": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "type",
+          "statement",
+          "reasoning",
+          "confidence",
+          "sourceRefs"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ClaimType"
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "reasoning": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "confidence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "sourceRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            }
+          }
+        }
+      },
+      "Variable": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "direction",
+          "type",
+          "statement",
+          "reasoning",
+          "confidence",
+          "sourceRefs"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "UP",
+              "DOWN",
+              "UNCHANGED",
+              "UNKNOWN"
+            ]
+          },
+          "type": {
+            "$ref": "#/components/schemas/ClaimType"
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "reasoning": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "confidence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "sourceRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            }
+          }
+        }
+      },
+      "CausalLink": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "cause",
+          "effect",
+          "type",
+          "statement",
+          "reasoning",
+          "confidence",
+          "sourceRefs"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "cause": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "effect": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "type": {
+            "$ref": "#/components/schemas/ClaimType"
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "reasoning": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "confidence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "sourceRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            }
+          }
+        }
+      },
+      "StakeholderImpact": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "stakeholder",
+          "direction",
+          "type",
+          "statement",
+          "reasoning",
+          "confidence",
+          "sourceRefs"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stakeholder": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "BENEFITS",
+              "HARMED",
+              "MIXED",
+              "UNKNOWN"
+            ]
+          },
+          "type": {
+            "$ref": "#/components/schemas/ClaimType"
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "reasoning": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "confidence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "sourceRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            }
+          }
+        }
+      },
+      "Hypothesis": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "description",
+          "status",
+          "confidenceReason",
+          "createdAt",
+          "updatedAt",
+          "type",
+          "statement",
+          "reasoning",
+          "confidence",
+          "sourceRefs"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "SUPPORTED",
+              "CHALLENGED",
+              "REJECTED",
+              "ARCHIVED"
+            ]
+          },
+          "confidenceReason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ClaimType"
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "reasoning": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "confidence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "sourceRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            }
+          }
+        }
+      },
+      "Evidence": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "hypothesisId",
+          "stance",
+          "strength",
+          "sourceId",
+          "reason",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hypothesisId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stance": {
+            "type": "string",
+            "enum": [
+              "SUPPORTS",
+              "CONTRADICTS",
+              "NEUTRAL"
+            ]
+          },
+          "strength": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "sourceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Prediction": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "hypothesisId",
+          "statement",
+          "type",
+          "expectedBy",
+          "status",
+          "verificationCriteria"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hypothesisId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "PREDICTION"
+            ]
+          },
+          "expectedBy": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "CONFIRMED",
+              "REJECTED",
+              "PARTIAL",
+              "UNRESOLVED"
+            ]
+          },
+          "verificationCriteria": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          }
+        }
+      },
+      "Indicator": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "predictionId",
+          "name",
+          "measurement",
+          "frequency",
+          "type",
+          "statement",
+          "reasoning",
+          "confidence",
+          "sourceRefs"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "predictionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "measurement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "frequency": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "type": {
+            "$ref": "#/components/schemas/ClaimType"
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "reasoning": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "confidence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "sourceRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            }
+          }
+        }
+      },
+      "ConfidenceAssessment": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "score",
+          "reason",
+          "isProbability"
+        ],
+        "properties": {
+          "score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "isProbability": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          }
+        }
+      },
+      "AnalysisResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "summary",
+          "facts",
+          "variables",
+          "mechanisms",
+          "stakeholders",
+          "firstOrderEffects",
+          "secondOrderEffects",
+          "hypotheses",
+          "alternativeExplanations",
+          "counterArguments",
+          "falsificationConditions",
+          "corroboratingSignals",
+          "verificationIndicators",
+          "unknowns",
+          "confidenceAssessment",
+          "upcomingObservations",
+          "modifiesExistingHypotheses",
+          "demo"
+        ],
+        "properties": {
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "facts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Fact"
+            }
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Variable"
+            }
+          },
+          "mechanisms": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CausalLink"
+            }
+          },
+          "stakeholders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StakeholderImpact"
+            }
+          },
+          "firstOrderEffects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Statement"
+            }
+          },
+          "secondOrderEffects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Statement"
+            }
+          },
+          "hypotheses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Hypothesis"
+            }
+          },
+          "alternativeExplanations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Statement"
+            }
+          },
+          "counterArguments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Statement"
+            }
+          },
+          "falsificationConditions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Statement"
+            }
+          },
+          "corroboratingSignals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Statement"
+            }
+          },
+          "verificationIndicators": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Indicator"
+            }
+          },
+          "unknowns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Statement"
+            }
+          },
+          "confidenceAssessment": {
+            "$ref": "#/components/schemas/ConfidenceAssessment"
+          },
+          "upcomingObservations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Statement"
+            }
+          },
+          "modifiesExistingHypotheses": {
+            "type": "boolean"
+          },
+          "demo": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Source": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "url",
+          "text",
+          "extractionStatus",
+          "message",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "text": {
+            "type": "string"
+          },
+          "extractionStatus": {
+            "type": "string",
+            "enum": [
+              "PASTED",
+              "EXTRACTED",
+              "NEEDS_TEXT"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "NewsInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri",
+            "maxLength": 2048
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 100000
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 240
+          }
+        },
+        "description": "At least one nonblank URL or text is required. URL must use HTTP(S)."
+      },
+      "NewsItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "source",
+          "domain",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "source": {
+            "$ref": "#/components/schemas/Source"
+          },
+          "domain": {
+            "$ref": "#/components/schemas/DomainType"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "NewsValueScore": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "grade",
+          "importance",
+          "relevance",
+          "novelty",
+          "variableImpact",
+          "verifiability",
+          "reason"
+        ],
+        "properties": {
+          "grade": {
+            "$ref": "#/components/schemas/NewsGrade"
+          },
+          "importance": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "relevance": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "novelty": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "variableImpact": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "verifiability": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          }
+        }
+      },
+      "Analysis": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "newsId",
+          "jobId",
+          "domain",
+          "score",
+          "result",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "newsId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "domain": {
+            "$ref": "#/components/schemas/DomainType"
+          },
+          "score": {
+            "$ref": "#/components/schemas/NewsValueScore"
+          },
+          "result": {
+            "$ref": "#/components/schemas/AnalysisResult"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "JobEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sequence",
+          "status",
+          "step",
+          "message",
+          "at"
+        ],
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "step": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "AnalysisJob": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "newsId",
+          "status",
+          "analysisId",
+          "error",
+          "correlationId",
+          "createdAt",
+          "updatedAt",
+          "events"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "newsId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "analysisId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobEvent"
+            }
+          }
+        }
+      },
+      "Topic": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "newsIds",
+          "hypothesisIds"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "newsIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "hypothesisIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "HypothesisEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "hypothesisId",
+          "eventType",
+          "previousConfidence",
+          "confidence",
+          "reason",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hypothesisId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "eventType": {
+            "type": "string",
+            "enum": [
+              "CREATED",
+              "EVIDENCE_ADDED",
+              "CONFIDENCE_CHANGED",
+              "PREDICTION_VERIFIED"
+            ]
+          },
+          "previousConfidence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "confidence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "HypothesisDetail": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "hypothesis",
+          "timeline",
+          "evidence",
+          "predictions"
+        ],
+        "properties": {
+          "hypothesis": {
+            "$ref": "#/components/schemas/Hypothesis"
+          },
+          "timeline": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HypothesisEvent"
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            }
+          },
+          "predictions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Prediction"
+            }
+          }
+        }
+      },
+      "ModelProfile": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "provider",
+          "model",
+          "baseUrl",
+          "apiKeyEnv",
+          "temperature",
+          "maxTokens",
+          "timeout",
+          "structuredOutput",
+          "toolCalling",
+          "enabled"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "minLength": 1
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1
+          },
+          "baseUrl": {
+            "type": "string"
+          },
+          "apiKeyEnv": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          },
+          "temperature": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "maxTokens": {
+            "type": "integer",
+            "minimum": 128,
+            "maximum": 32000
+          },
+          "timeout": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 120
+          },
+          "structuredOutput": {
+            "type": "boolean"
+          },
+          "toolCalling": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "NamedModelProfile": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "profile",
+          "effectiveMode"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/ModelProfile"
+          },
+          "effectiveMode": {
+            "type": "string",
+            "enum": [
+              "MOCK",
+              "LIVE",
+              "DISABLED"
+            ]
+          }
+        }
+      },
+      "ModelRun": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "jobId",
+          "provider",
+          "model",
+          "purpose",
+          "promptVersion",
+          "startedAt",
+          "completedAt",
+          "latencyMs",
+          "inputTokens",
+          "outputTokens",
+          "totalTokens",
+          "estimatedCost",
+          "status",
+          "errorType",
+          "correlationId"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/ModelPurpose"
+          },
+          "promptVersion": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "latencyMs": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "inputTokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "outputTokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "totalTokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "estimatedCost": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "SUCCEEDED",
+              "FAILED"
+            ]
+          },
+          "errorType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "correlationId": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "requestId"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

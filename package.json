@@ -1,0 +1,23 @@
+{
+  "name": "signalframe",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "contracts": "python3 scripts/generate-java.py && openapi-typescript contracts/openapi.yaml -o apps/web/src/lib/api.generated.ts",
+    "contracts:check": "node scripts/check-contracts.mjs",
+    "lint": "npm run lint -w apps/web",
+    "typecheck": "npm run typecheck -w apps/web",
+    "test": "npm run test -w apps/web",
+    "build": "npm run build -w apps/web",
+    "dev": "npm run dev -w apps/web",
+    "smoke": "./scripts/smoke-web.sh"
+  },
+  "devDependencies": {
+    "@apidevtools/swagger-parser": "12.1.0",
+    "openapi-typescript": "7.13.0",
+    "prettier": "3.9.9",
+    "prettier-plugin-java": "2.11.0"
+  }
+}
