@@ -10,7 +10,7 @@ export function Today() {
   const { data: hypotheses, error: he } = useLoad(hypothesesLoad);
   return (
     <>
-      <header>
+      <header className="page-head">
         <div className="eyebrow">YOUR CHANGING WORLD MODEL</div>
         <h1>今日关键变化</h1>
         <p>从信息中识别变量，以证据持续修正判断。</p>
@@ -28,7 +28,11 @@ export function Today() {
       <div className="two-columns">
         <section className="panel">
           <h2>High Value News</h2>
-          {news?.length ? (
+          {news === undefined && !error ? (
+            <p className="muted" aria-live="polite">
+              正在加载最近输入…
+            </p>
+          ) : news?.length ? (
             news.slice(0, 6).map((n) => (
               <Link className="list-item" key={n.id} href={`/news/${n.id}`}>
                 <span className="tag">INPUT</span>
@@ -44,7 +48,11 @@ export function Today() {
         </section>
         <section className="panel">
           <h2>Hypothesis Updates</h2>
-          {hypotheses?.length ? (
+          {hypotheses === undefined && !he ? (
+            <p className="muted" aria-live="polite">
+              正在加载假设…
+            </p>
+          ) : hypotheses?.length ? (
             hypotheses.slice(0, 4).map((h) => (
               <Link
                 key={h.id}
