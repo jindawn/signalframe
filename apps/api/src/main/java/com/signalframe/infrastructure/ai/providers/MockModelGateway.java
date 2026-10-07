@@ -7,13 +7,46 @@ import java.time.Instant;
 import java.util.*;
 import org.springframework.stereotype.Component;
 
+/**
+ * Deterministic offline adapter.
+ *
+ * <p>It needs no credential, so the router can fall back to it whenever a
+ * profile has no key configured. Output is a structurally valid analysis
+ * snapshot that repeats the supplied source as a reported claim and states that
+ * nothing was independently verified.
+ */
 @Component
-public class MockModelGateway implements ModelGateway {
+public class MockModelGateway implements ModelGateway, ModelProviderAdapter {
+
+  static final String PROVIDER = "mock";
 
   private final JsonCodec json;
 
   public MockModelGateway(JsonCodec json) {
     this.json = json;
+  }
+
+  @Override
+  public String provider() {
+    return PROVIDER;
+  }
+
+  @Override
+  public Set<ModelCapability> capabilities() {
+    return Set.of(ModelCapability.STRUCTURED_OUTPUT);
+  }
+
+  @Override
+  public boolean requiresCredentials() {
+    return false;
+  }
+
+  @Override
+  public ModelResponse call(
+    ModelRequest request,
+    ModelCredentials credentials
+  ) {
+    return call(request);
   }
 
   public ModelResponse call(ModelRequest request) {
@@ -105,7 +138,7 @@ public class MockModelGateway implements ModelGateway {
     return new ModelResponse(
       json.write(result),
       new ModelUsage(0L, 0L, 0L, 0.0),
-      "mock",
+      PROVIDER,
       "mock-v1"
     );
   }
