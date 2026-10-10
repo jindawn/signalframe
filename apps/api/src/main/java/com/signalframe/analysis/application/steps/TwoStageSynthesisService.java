@@ -764,6 +764,40 @@ public class TwoStageSynthesisService {
    * assessment, and the facts schema. The output contract is last so it is the most
    * recent thing read.
    */
+  /**
+   * The stage-1 reply schema: the contract's own definitions plus the root object
+   * the reply must match.
+   *
+   * <p>{@code AnalysisOutputSchema.renderFor} projects the contract's components,
+   * which is right for describing artifacts but wrong as the whole "schema your
+   * reply must match": a components bag carries no root object, so the root shape
+   * was conveyed only by prose at the end of the prompt, after the source text.
+   * The definitions are still the generated contract's; only the missing root is
+   * added here, so nothing can drift.
+   */
+  String factsReplySchema() {
+    var projected = deps.json().read(factsSchema, Map.class);
+    var root = new LinkedHashMap<String, Object>(projected);
+    root.put("type", "object");
+    root.put("additionalProperties", false);
+    root.put(
+      "properties",
+      Map.of(
+        "facts",
+        Map.of(
+          "type",
+          "array",
+          "items",
+          Map.of("$ref", "#/components/schemas/Fact")
+        ),
+        "unknowns",
+        Map.of("type", "array", "items", Map.of("type", "object"))
+      )
+    );
+    root.put("required", List.of("facts"));
+    return deps.json().write(root);
+  }
+
   String factsPromptText(PromptLibrary.VersionedPrompt prompt, PipelineState state) {
     var text = new StringBuilder(prompt.text().trim()).append('\n');
     if (state.sourceAssessment() != null) {
@@ -774,13 +808,21 @@ public class TwoStageSynthesisService {
     }
     text
       .append("\nJSON Schema of the object your reply must match:\n")
-      .append(factsSchema)
+      .append(factsReplySchema())
       .append('\n')
       .append("\n<untrusted_source>\n")
       .append(state.news().source().text())
       .append("\n</untrusted_source>\n")
       .append("\nOUTPUT CONTRACT (read last): reply with one JSON object and nothing else, shaped {\"facts\":[...],\"unknowns\":[...]}.")
       .append(" facts is the top level array of reported claims; no wrapper key, no markdown, no prose.")
+      .append(" The root object has exactly these two keys: nothing named result, data, output, analysis or")
+      .append(" AnalysisResult, and no schema, components or $schema key in your reply.")
+      .append(" Minimal shape, for the avoidance of doubt:")
+      .append(" {\"facts\":[{\"id\":\"<uuid>\",\"statement\":\"<the exact quoted span>\",")
+      .append("\"reasoning\":\"<why this is a reported claim>\",\"sourceRefs\":[{\"sourceId\":\"")
+      .append(state.news().source().id())
+      .append("\",\"quote\":\"<the same exact span>\",\"startOffset\":0,\"endOffset\":12}],")
+      .append("\"verificationStatus\":\"REPORTED\"}],\"unknowns\":[]}")
       .append(" Every fact statement must be copied character for character from the source text,")
       .append(" and its sourceRefs[0].sourceId must be the source UUID ")
       .append(state.news().source().id())
