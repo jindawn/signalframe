@@ -58,7 +58,18 @@ class EvidencePredictionHttpTest {
   @TestConfiguration
   static class FrozenPortConfiguration {
 
+    /**
+     * The recording stand-in for this test's context.
+     *
+     * <p>{@code @Primary} is required on the integrated revision: TASK-06's real
+     * {@code HypothesisTransitionService} is now also a
+     * {@link HypothesisTransitionPort} bean, so a context that substitutes the port
+     * has two candidates. Without a primary the gateway's resolution is ambiguous and
+     * every evidence/verification call fails with a 500 instead of exercising the
+     * behaviour under test.
+     */
     @Bean
+    @org.springframework.context.annotation.Primary
     HypothesisTransitionPort hypothesisTransitionPort() {
       return ENGINE;
     }
@@ -137,7 +148,11 @@ class EvidencePredictionHttpTest {
       analysisId,
       newsId,
       jobId,
-      "{\"facts\":[{\"id\":\"" + factId + "\"}]}",
+      // The stored snapshot is the whole `Analysis` record, so its facts are nested
+      // under `result` — that is the shape JdbcAnalysisRepository writes and the only
+      // shape `factIds` can resolve. A flattened {"facts":[...]} payload would model
+      // a row no writer produces.
+      "{\"result\":{\"facts\":[{\"id\":\"" + factId + "\"}]}}",
       Timestamp.from(Instant.now())
     );
     db.update(

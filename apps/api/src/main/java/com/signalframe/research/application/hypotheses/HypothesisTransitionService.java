@@ -597,10 +597,11 @@ public class HypothesisTransitionService implements HypothesisTransitionPort {
    * recorded result with {@code applied = false} and appends nothing; the same key
    * with a different request is a conflict, never a silent second application.
    *
-   * <p>The fingerprint is everything the event stores plus the trailer: the
-   * hypothesis, the cause, the referenced artifact and the reason. Those are
-   * exactly the inputs that determine the recorded outcome, so a command that
-   * reproduces them is a replay and a command that differs is not.
+   * <p>The fingerprint is everything that identifies the request: the hypothesis,
+   * the cause, the referenced artifact, the reason, and — for a verification — the
+   * asserted outcome. Those are exactly the inputs that determine the recorded
+   * outcome, so a command that reproduces them is a replay and a command that
+   * differs is not.
    */
   private HypothesisTransitionResult replay(
     HypothesisEvent event,
@@ -616,7 +617,8 @@ public class HypothesisTransitionService implements HypothesisTransitionPort {
       Objects.equals(recordedReference(facts.ref()), referenceOf(command)) &&
       TransitionEventText
         .userReason(event.reason())
-        .equals(TransitionEventText.canonicalReason(command.reason()));
+        .equals(TransitionEventText.canonicalReason(command.reason())) &&
+      sameVerificationOutcome(command);
     if (!sameRequest) throw TransitionErrors.idempotencyMismatch(
       command.operationId()
     );
@@ -637,12 +639,52 @@ public class HypothesisTransitionService implements HypothesisTransitionPort {
     );
   }
 
-  /** The reference a command cites, as the trailer stores it. */
+  /**
+   * The reference the recorded event actually cites, computed the way
+   * {@link #resolveReference} builds it rather than the way a caller happened to
+   * populate the command.
+   *
+   * <p>The two differ for a verification that also names the evidence it was
+   * decided against: {@code resolveReference} records the <em>prediction</em>, so a
+   * fingerprint that preferred {@code evidenceRef} would report a legitimate replay
+   * of that command as an idempotency mismatch and never return the recorded
+   * result.
+   */
   private static String referenceOf(HypothesisTransitionCommand command) {
-    UUID reference = command.evidenceRef() != null
-      ? command.evidenceRef()
-      : command.predictionRef();
+    UUID reference = switch (command.cause()) {
+      case PREDICTION_VERIFIED, DEADLINE_PASSED -> command.predictionRef();
+      case EVIDENCE_ADDED, EVIDENCE_CHANGED, FALSIFICATION_OBSERVED -> command.evidenceRef() !=
+        null
+        ? command.evidenceRef()
+        : command.predictionRef();
+    };
     return reference == null ? TransitionEventText.NONE : reference.toString();
+  }
+
+  /**
+   * Whether the asserted verification outcome matches the one the recorded
+   * transition was derived from.
+   *
+   * <p>The outcome is part of a request's identity — the same key with a different
+   * asserted result is a different request (freeze §2.2) — but the event trailer
+   * records the <em>resulting status</em>, not the raw outcome, so it cannot carry
+   * the comparison. The stored prediction can: a prediction is decided exactly once
+   * and its status is that one outcome, so it is the durable record of what the
+   * original request asserted. A non-verification cause has no outcome to compare.
+   */
+  private boolean sameVerificationOutcome(HypothesisTransitionCommand command) {
+    if (command.cause() != HypothesisTransitionCause.PREDICTION_VERIFIED) {
+      return true;
+    }
+    if (command.predictionRef() == null || command.verificationOutcome() == null) {
+      return false;
+    }
+    return repository
+      .prediction(command.predictionRef())
+      .map(prediction ->
+        command.verificationOutcome().name().equals(prediction.status())
+      )
+      .orElse(false);
   }
 
   private static String recordedReference(String stored) {

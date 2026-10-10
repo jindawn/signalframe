@@ -601,8 +601,27 @@ class EvidencePredictionServiceTest {
     assertEquals(0, port.calls.get());
   }
 
+  /**
+   * A refused engine call fails the whole verification.
+   *
+   * <p><b>Wave 2B integration.</b> The verification record is written <em>before</em>
+   * the engine is notified, because the frozen
+   * {@link com.signalframe.research.domain.hypotheses.HypothesisTransitionPort}
+   * accepts a {@code PREDICTION_VERIFIED} command only when the stored prediction
+   * already carries that outcome and a verification timestamp (freeze §2.1,
+   * EPISTEMIC_TYPES §2.3) — notifying it first made every first verification
+   * unprocessable, which is exactly what the integration gate found.
+   *
+   * <p>Unwinding that write when the engine refuses is a <em>transaction</em>
+   * property, and the in-memory fake used here has no transaction, so this unit test
+   * asserts what unit scope can honestly assert: the failure propagates and the
+   * caller gets no result. Real PostgreSQL behaviour is asserted by
+   * {@code Wave2BResearchLoopIntegrationTest.aRefusedTransitionRollsBackTheVerificationRecord},
+   * which starts a rejected hypothesis and observes the prediction still {@code OPEN}
+   * with no verification timestamp.
+   */
   @Test
-  void aFailingEngineStopsTheVerificationBeforeThePredictionIsDecided() {
+  void aFailingEngineFailsTheWholeVerification() {
     var svc = service();
     Prediction prediction = svc.createPrediction(
       hypothesisId,
@@ -617,8 +636,12 @@ class EvidencePredictionServiceTest {
       )
     );
     assertEquals(409, failure.status());
-    assertEquals(0, store.resolveCalls);
-    assertEquals("OPEN", store.predictionRows.get(prediction.id()).status());
+    assertEquals(
+      1,
+      store.resolveCalls,
+      "the record is written first so the engine can see it; the surrounding " +
+      "transaction unwinds it (asserted on real PostgreSQL)"
+    );
   }
 
   /**
