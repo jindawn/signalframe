@@ -63,7 +63,21 @@ test("URL failure allows pasted-text continuation and static-only PWA", async ({
   await page.goto("/inbox");
   await page.getByLabel("新闻 URL").fill("http://127.0.0.1/private");
   await page.getByRole("button", { name: "Analyze →" }).click();
-  await expect(page.locator("p[role=alert]")).toContainText("粘贴正文");
+  // A blocked URL must surface as one recoverable alert region: the reason code,
+  // the blocked category and the paste-text fallback. The region is a
+  // <section role="alert"> (heading + diagnostic + recovery actions), so assert
+  // on the accessible role rather than on a paragraph tag.
+  const recovery = page
+    .getByRole("alert")
+    .filter({ hasText: "网页提取失败" });
+  await expect(recovery).toBeVisible();
+  await expect(recovery).toContainText("UNSAFE_DESTINATION");
+  await expect(recovery).toContainText("访问被阻止");
+  await expect(recovery).toContainText("粘贴正文");
+  // The private address was refused, so no private content may be captured.
+  const captured = page.locator("details.captured");
+  await expect(captured).toContainText("需要粘贴正文");
+  await expect(captured).toContainText("这段输入没有正文文本。");
   await page
     .getByLabel("新闻正文 / 补充文字")
     .fill("补充新闻原文：这是一段用于验证 URL 降级后可以继续分析的测试文本。");
