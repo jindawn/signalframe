@@ -145,6 +145,66 @@ class ModelAnalysisRetryTest {
     assertEquals("AUTHENTICATION", saved.getFirst().errorType());
   }
 
+  /**
+   * Two very different problems share {@code PROVIDER_RESPONSE_INVALID}: the model
+   * returned no answer, or the body could not be decoded. The audit row keeps only
+   * the classification, so the operator-facing message has to carry the redacted
+   * detail, otherwise the post-mortem of a paid call is a guess.
+   */
+  @Test
+  void aProviderFailureNamesItsRedactedCauseInTheOperatorMessage() {
+    var gateway = mock(ModelGateway.class);
+    when(gateway.call(any())).thenThrow(
+      ModelInvocationException.of(
+        ModelFailure.PROVIDER_RESPONSE_INVALID,
+        "Provider returned an empty completion"
+      )
+    );
+    var runs = mock(ModelRunRepository.class);
+    var service = service(gateway, runs, new ModelRetryPolicy(2, 1, Duration.ZERO));
+
+    var error = assertThrows(ApplicationException.class, () ->
+      service.synthesize(UUID.randomUUID(), "corr-detail", AiTestFixtures.news(), "")
+    );
+
+    assertEquals("PROVIDER_RESPONSE_INVALID", error.code());
+    assertTrue(
+      error.getMessage().contains("Provider returned an empty completion"),
+      "the message must name the cause: " + error.getMessage()
+    );
+    assertTrue(
+      error.getMessage().contains("PROVIDER_RESPONSE_INVALID"),
+      "the message must name the classification: " + error.getMessage()
+    );
+    assertFalse(error.getMessage().contains("\n"), "the message stays single-line");
+  }
+
+  /** The diagnostic never carries a credential, whatever the provider said. */
+  @Test
+  void theOperatorMessageNeverCarriesTheCredential() {
+    var secret = "stub-secret-do-not-leak";
+    var gateway = mock(ModelGateway.class);
+    when(gateway.call(any())).thenThrow(
+      new ModelInvocationException(
+        ModelFailure.PROVIDER_RESPONSE_INVALID,
+        "provider echoed Bearer " + secret,
+        new com.signalframe.ai.domain.ModelCredentials(secret)
+      )
+    );
+    var runs = mock(ModelRunRepository.class);
+    var service = service(gateway, runs, new ModelRetryPolicy(2, 1, Duration.ZERO));
+
+    var error = assertThrows(ApplicationException.class, () ->
+      service.synthesize(UUID.randomUUID(), "corr-secret", AiTestFixtures.news(), "")
+    );
+
+    assertFalse(
+      error.getMessage().contains(secret),
+      "the credential must never reach an operator message: " + error.getMessage()
+    );
+    assertTrue(error.getMessage().contains("[REDACTED]"), error.getMessage());
+  }
+
   @Test
   void retryStopsAtTheConfiguredBound() {
     var gateway = mock(ModelGateway.class);

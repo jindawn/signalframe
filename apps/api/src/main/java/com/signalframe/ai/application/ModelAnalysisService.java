@@ -225,12 +225,31 @@ public class ModelAnalysisService {
           "FAILED",
           failure.code()
         );
+        // The audit row keeps the frozen shape and records the classification
+        // only, so the redacted detail is surfaced here instead. Without it an
+        // operator cannot tell "the provider returned an empty completion" from
+        // "the body could not be decoded" - two different problems with the same
+        // PROVIDER_RESPONSE_INVALID code - and the paid call is already spent.
+        log.warn(
+          "Model call failed provider={} model={} code={} retryable={} detail={}",
+          profile.provider(),
+          profile.model(),
+          failure.code(),
+          failure.retryable(),
+          failure.detail()
+        );
         if (
           !failure.retryable() || attempt == retryPolicy.maxAttempts()
         ) throw toApplicationException(failure);
         pause();
         continue;
       } catch (RuntimeException unexpected) {
+        log.warn(
+          "Unclassified adapter failure provider={} model={} type={}",
+          profile.provider(),
+          profile.model(),
+          unexpected.getClass().getSimpleName()
+        );
         audit(
           jobId,
           correlationId,
@@ -396,7 +415,25 @@ public class ModelAnalysisService {
         case TIMEOUT -> "模型调用超时，请稍后重试。";
         case RATE_LIMITED, PROVIDER_UNAVAILABLE, TRANSPORT -> "模型服务暂时不可用，请稍后重试。";
         default -> "模型调用失败，请稍后重试。";
-      }
+      } +
+      diagnostic(failure)
     );
+  }
+
+  /**
+   * The redacted provider detail, appended to the operator-facing message.
+   *
+   * <p>{@code detail()} is already credential-free, single-line and capped, and it
+   * is what separates two very different problems that share one code: an empty
+   * completion (the model produced no answer, often because reasoning consumed the
+   * completion ceiling) from an undecodable body. The audit row keeps its frozen
+   * shape and the classification only, so this is where the distinction is
+   * surfaced; the alternative is an operator guessing after a paid call is spent.
+   */
+  private static String diagnostic(ModelInvocationException failure) {
+    var detail = failure.detail();
+    return detail == null || detail.isBlank()
+      ? ""
+      : "（" + failure.code() + ": " + detail + "）";
   }
 }

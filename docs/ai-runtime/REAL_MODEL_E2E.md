@@ -203,6 +203,12 @@ Rules the runtime keeps:
 - failure details are redacted before they can reach an audit row or a response:
   the resolved credential is replaced, key-shaped tokens are masked, and the
   detail is single-line and truncated;
+- the redacted detail is also appended to the operator-facing job error and logged
+  at WARN. The audit row keeps its frozen shape and records the classification
+  only, and two very different problems share one code — an empty completion (the
+  model returned no answer, often because reasoning consumed the whole completion
+  ceiling) and an undecodable body. Without the detail, post-mortem of an already
+  paid call is a guess;
 - unknown usage stays `null`. A provider that reports no usage yields null token
   counts and null cost; nothing is fabricated into zeros.
 
