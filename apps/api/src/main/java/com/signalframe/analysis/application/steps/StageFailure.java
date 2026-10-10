@@ -54,6 +54,39 @@ public final class StageFailure extends RuntimeException {
 
   /** Operator-facing, protocol-level explanation; safe to persist on the job. */
   public String jobMessage() {
+    return jobReason() + diagnostic();
+  }
+
+  /**
+   * The redacted detail, appended so a failed attempt names its cause.
+   *
+   * <p>The audit row keeps its frozen shape and the classification only, so this is
+   * where an operator learns whether a {@code PROVIDER_FAILURE} was a rejected
+   * credential, a throttled quota or an undecodable body. Bounded so a long stage
+   * explanation cannot flood the job record.
+   */
+  private String diagnostic() {
+    if (detail == null || detail.isBlank()) return "";
+    // Redacted here as well as at the provider boundary: a caller may hand this
+    // record a raw provider message, and a job row is persisted and rendered.
+    var compact = BEARER.matcher(detail).replaceAll("Bearer [REDACTED]");
+    compact = KEY_SHAPED.matcher(compact).replaceAll("[REDACTED]");
+    compact = compact.replaceAll("\\s+", " ").trim();
+    if (compact.length() > MAX_DETAIL) compact = compact.substring(0, MAX_DETAIL) + "...";
+    return "（" + compact + "）";
+  }
+
+  private static final int MAX_DETAIL = 300;
+
+  private static final java.util.regex.Pattern BEARER = java.util.regex.Pattern.compile(
+    "(?i)bearer\\s+[A-Za-z0-9._\\-]+"
+  );
+
+  private static final java.util.regex.Pattern KEY_SHAPED = java.util.regex.Pattern.compile(
+    "(?i)\\b(sk|api[_-]?key|access[_-]?token|token|secret)[-_:][A-Za-z0-9._\\-]{8,}"
+  );
+
+  private String jobReason() {
     String boundary = "（阶段 " + stage + "）";
     return switch (kind) {
       case TIMEOUT -> "分析失败：模型响应超时" + boundary + "。请稍后重试。";

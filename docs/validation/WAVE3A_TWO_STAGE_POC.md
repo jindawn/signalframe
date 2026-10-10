@@ -226,3 +226,169 @@ emitting JSON will not be fixed by splitting the task — but a split does bound
 request, and this PoC makes that option real, tested and reversible.
 
 **G4 stays FAIL / BLOCKED.**
+
+---
+
+# Hardening round (offline)
+
+Date: 2026-10-10 · Baseline `098c12b` · No OpenCode Go request was made.
+
+## 12. Cross-stage positive E2E
+
+`TwoStageSynthesisTest.aStageOneFactIsCitedAcrossEveryStageTwoArtifactAndAssembled`
+is the deterministic proof that valid data travels through both stages instead of
+passing by UNKNOWN downgrade:
+
+```
+stage 1  one FACT, statement == the exact source span, offsets 0..length
+stage 2  variable, mechanism, hypothesis, falsification condition, plan item and
+         prediction, each citing FACT_ID (and carrying the source span)
+assemble SnapshotProjection + the single rubric + AnalysisResultValidator
+assert   fact id preserved; every factRef resolves; PLAUSIBLE support level kept;
+         expectedBy in the future; RUBRIC method with rubricVersion 0.1;
+         both stage prompt versions in provenance; two ModelRun rows
+```
+
+The fixture is built from the typed stage contracts (`ProtocolModel` records), so
+the field names are the ones the readers expect — the earlier hand-escaped JSON
+fixtures were the source of several false failures and are gone.
+
+## 13. Stage budgets
+
+| bound | where | default |
+| --- | --- | --- |
+| stage 1 `max-tokens` / `timeout` | `ai.two-stage.facts.max-tokens` / `.timeout` | `0` = inherit the routed profile |
+| stage 2 `max-tokens` / `timeout` | `ai.two-stage.reasoning.max-tokens` / `.timeout` | `0` = inherit the routed profile |
+| stage 1 retry / repair | `ai.two-stage.facts.max-attempts` / `.max-repair-attempts` | `ai.retry.*` |
+| stage 2 retry / repair | `ai.two-stage.reasoning.max-attempts` / `.max-repair-attempts` | `ai.retry.*` |
+| per-analysis provider requests | `ai.two-stage.max-provider-calls` | `4` |
+| per-analysis deadline | `ai.two-stage.total-timeout-ms` | `0` = no total budget |
+
+A stage budget is applied to the profile that stage routes to by purpose
+(`FACT_EXTRACTION`, `SYNTHESIS`), so routing is unchanged and nothing is hardcoded.
+An out-of-contract value fails at **startup** rather than during a paid call: the
+bounds mirror the `ModelProfile` contract (`max-tokens` 128..32000, `timeout`
+1..120). `StageModelClient` gained an explicit-profile `invoke` overload; the
+purpose-routed path is untouched.
+
+**Max provider calls.** `ProviderCallBudget` is a `ModelGateway` decorator applied
+per analysis, so it covers every attempt of both stages including the repair round.
+Exceeding it is a non-retryable configuration failure, which stops the retry loop
+instead of spending more of a metered budget. Measured behaviour: with a ceiling of
+one and one repair round allowed, stage 1's repair call is refused and the job
+names the ceiling.
+
+**Total timeout and cancellation.** When `total-timeout-ms` is set, the deadline is
+checked before stage 2 and before assembly, so a spent budget cannot buy another
+request. Interruption is checked at the same points; it is the only cancellation the
+in-process queue supports, and there is no job-cancel API to propagate further.
+
+## 14. Stage 2 complexity
+
+Thirteen arrays plus a summary. Measured on the offline reference snapshot
+(ESTIMATED tokens at ~4 chars/token):
+
+| output | offline size | mandatory? | may be empty? |
+| --- | --- | --- | --- |
+| `summary` | 6 | yes, non-blank | no |
+| `hypotheses` | 250 | **effectively yes** — a snapshot with none fails `AlternativeExplanation` downstream (`EP-02`, measured) | no |
+| `verificationIndicators` | 133 | no | yes |
+| `variables` | 99 | no | yes |
+| `firstOrderEffects` / `secondOrderEffects` | 79 each | no | yes |
+| `counterArguments` | 79 | no | yes |
+| `unknowns` | 78 | no | **should not be** for a thin input (PR-05) |
+| `alternativeExplanations` | 79 | yes per emitted hypothesis | only with none |
+| `falsificationConditions` | 78 | yes per emitted hypothesis | only with none |
+| `mechanisms`, `stakeholders`, `corroboratingSignals`, `predictions` | 0 in the fixture | no | yes |
+
+Findings:
+
+1. **Hypotheses dominate** (≈250 of ≈1 121 output tokens) and are the only array
+   whose emptiness breaks the pipeline, so the stage-2 prompt must reliably produce
+   one. No other array is load-bearing.
+2. **The prompt contradicted the schema.** It said "never state a confidence score"
+   while every item must carry `confidence`. Fixed in the `two-stage-reasoning-v2`
+   text: item-level `confidence` is required advisory diagnostics on the 0–100
+   judgment scale, while `confidenceAssessment` is computed deterministically and
+   any model number there is discarded. This is a prompt clarification only — no
+   semantics changed.
+3. **Items must carry the source span, not only the fact id.** Measured: the
+   assembled draft is re-extracted by the same downstream stages a monolithic draft
+   is, and that path links an item to its fact by **span overlap**, ignoring
+   `factRefs`. A reply that gives only fact ids loses its evidence links. The prompt
+   now asks for both; the fixture carries both.
+4. **Deterministically computable fields are already optional in the stage
+   vocabulary**: `id`s default, `status` defaults to `OPEN`/`NOT_OBSERVED`,
+   `previousState`/`magnitude`/`verificationStatus` default. Nothing is padded to
+   satisfy the schema, and no placeholder is generated to fill an array.
+5. **Item-level `confidence` is the one model-supplied number that is persisted**
+   (`SnapshotProjection` copies it). It is advisory by protocol (CONFIDENCE_MODEL
+   §8) and is never summed, but a future increment could compute it from the item
+   profile instead of asking the model — deliberately **not** done here, because it
+   would change the monolithic path too.
+6. **No redundancy worth removing.** The prompt's output-contract text repeats the
+   array list the schema already carries (~400 chars of ~12 700). Removing it would
+   trade the framing that fixed the wrapper failure class for ~3 % of the prompt.
+
+## 15. Full test results
+
+| check | result |
+| --- | --- |
+| Contract check | PASS — no drift |
+| Backend tests | **569 tests, 0 failures, 0 errors, 5 skipped** |
+| PostgreSQL integration (two-stage) | PASS — 2 tests on real PostgreSQL + Flyway V1→V4 |
+| Lint | PASS |
+| Typecheck | PASS |
+| Frontend tests | PASS — 26 |
+| Build | PASS |
+| Smoke | **24/24** on this worktree's API (8090), isolated PostgreSQL (55432) and its own build (3101) |
+
+## 16. Files modified
+
+Modified: `TwoStageSynthesisService.java` (budgets, call ceiling, deadline,
+cancellation, envelope-key fixes, cross-stage ordering), `StageModelClient.java`
+(explicit-profile overload, redacted failure detail in the log and the failure),
+`StageFailure.java` (bounded, redacted diagnostic in the operator copy),
+`AnalysisJobService.java` (unexpected failures are now diagnosable),
+`application.yml`, `prompts/two-stage-reasoning/{prompt.txt,version.txt}`,
+`OpenAiStubServer.java` (public, reusable), and the two-stage test suites.
+
+## 17. Live Stage 1 readiness
+
+Stage 1 is the smallest request in the system (≈4 400 characters, a 4-definition
+schema, a reply of one small array) and it is fully validated by the existing facts
+reader. It is ready to be exercised live as soon as a call is authorized; the
+budgets above let a deployment keep it single-shot while stage 2 keeps a repair
+round.
+
+## 18. Known gaps
+
+1. **The draft re-extraction is stale relative to the frozen contract, and it is the
+   real blocker for a complete cross-stage chain.** Measured with the rich fixture:
+   `SnapshotEnvelope` hardcodes every mechanism to `SPECULATIVE` (so
+   `strictMechanisms` drops all of them) and reads neither `predictions` nor the
+   structured plan fields, emitting instead
+   `Predictions are not part of the v0.1 snapshot schema (SCH-07 pending)` and
+   `The v0.1 snapshot's indicators cannot serve as verification plan items
+   (SCH-08 pending)` — for SCH-07/SCH-08/SCH-06, which the contract freeze already
+   records as applied. **This affects the monolithic path identically**: a live
+   model that returns a perfect snapshot would still lose its mechanisms, plan and
+   predictions before persistence, and the strict live tier would not notice
+   because it asserts facts, demo and audit only. Fixing it changes the monolithic
+   path's artifacts and therefore the rubric's caps and scores, so it belongs in
+   its own change with its own regression round.
+2. **A real-Spring run of the rich fixture was intermittent** (one run completed and
+   produced the conservative-reader UNKNOWNs; a later run failed with the generic
+   `分析失败，请重试。` and no application log line, while the same fixture through the
+   in-memory pipeline always succeeds). The flaky test was removed rather than
+   committed; the real-PostgreSQL proof uses the reference provider, which is
+   deterministic. This needs a dedicated investigation.
+3. **The `ModelProfile` bound still caps each stage at 120 s.**
+4. **Reasoning tokens are still not persisted**, so a two-phase reasoning cost
+   cannot be read back from the audit.
+5. **No job-cancel API exists**, so cancellation propagation stops at thread
+   interruption.
+6. **Two stages mean two reasoning phases**; the split bounds each request but does
+   not reduce total reasoning work.
+
+**G4 remains FAIL / BLOCKED.**

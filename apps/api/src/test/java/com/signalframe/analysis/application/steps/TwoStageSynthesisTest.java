@@ -110,6 +110,8 @@ class TwoStageSynthesisTest {
       ModelPurpose.class
     );
     private final List<ModelRequest> requests = new ArrayList<>();
+    /** Optional per-call delay, so a time budget can be exercised deterministically. */
+    long delayMs = 0L;
 
     void reply(ModelPurpose purpose, String body) {
       scripted.computeIfAbsent(purpose, key -> new ArrayDeque<>()).add(body);
@@ -136,6 +138,17 @@ class TwoStageSynthesisTest {
         "no scripted reply for " + request.purpose()
       );
       var next = queue.poll();
+      if (delayMs > 0L) {
+        try {
+          Thread.sleep(delayMs);
+        } catch (InterruptedException interrupted) {
+          Thread.currentThread().interrupt();
+          throw ModelInvocationException.of(
+            ModelFailure.TRANSPORT,
+            "interrupted"
+          );
+        }
+      }
       if (next instanceof ModelFailure failure) throw ModelInvocationException.of(
         failure,
         "scripted " + failure.code()
@@ -161,6 +174,17 @@ class TwoStageSynthesisTest {
     PipelineFixtures.RecordingRuns runs,
     JsonCodec json
   ) {
+    return service(gateway, runs, json, 4, 0L);
+  }
+
+  /** The same, with the per-analysis call ceiling and deadline under test. */
+  static TwoStageSynthesisService service(
+    ScriptedGateway gateway,
+    PipelineFixtures.RecordingRuns runs,
+    JsonCodec json,
+    int maxProviderCalls,
+    long totalTimeoutMs
+  ) {
     return new TwoStageSynthesisService(
       PipelineFixtures.router(),
       gateway,
@@ -176,7 +200,52 @@ class TwoStageSynthesisTest {
       0L,
       1,
       0,
-      0L
+      0L,
+      0,
+      0,
+      0,
+      0,
+      maxProviderCalls,
+      totalTimeoutMs
+    );
+  }
+
+  /** The same service with explicit stage budgets, for the budget assertions. */
+  static TwoStageSynthesisService serviceWithBudgets(
+    ScriptedGateway gateway,
+    PipelineFixtures.RecordingRuns runs,
+    JsonCodec json,
+    int factsMaxTokens,
+    int factsTimeout,
+    int reasoningMaxTokens,
+    int reasoningTimeout,
+    int maxProviderCalls,
+    long totalTimeoutMs
+  ) {
+    return new TwoStageSynthesisService(
+      PipelineFixtures.router(),
+      gateway,
+      runs,
+      PipelineFixtures.reader(json),
+      PipelineFixtures.promptLibrary(),
+      json,
+      PipelineFixtures.gateA(json),
+      ConfidenceRubric.deterministic(),
+      PipelineFixtures.strategies(),
+      // One repair round is allowed, so the ceiling is what stops the second
+      // attempt rather than the single-shot policy.
+      1,
+      1,
+      0L,
+      1,
+      1,
+      0L,
+      factsMaxTokens,
+      factsTimeout,
+      reasoningMaxTokens,
+      reasoningTimeout,
+      maxProviderCalls,
+      totalTimeoutMs
     );
   }
 
@@ -219,6 +288,105 @@ class TwoStageSynthesisTest {
     assertEquals(
       NEWS_TEXT.length(),
       result.facts().getFirst().sourceRefs().getFirst().endOffset()
+    );
+  }
+
+  /**
+   * A complete cross-stage chain, deterministically: stage 1 mints one fact with
+   * its exact span, stage 2 cites that exact id in every artifact it produces, and
+   * the assembler turns the pair into a snapshot the unchanged validator accepts.
+   *
+   * <p>This is the case the offline reference provider cannot produce (it answers
+   * each purpose with its own snapshot, so its ids never match), and it is the
+   * evidence that valid data can flow through both stages rather than passing by
+   * UNKNOWN demotion.
+   */
+  @Test
+  void aStageOneFactIsCitedAcrossEveryStageTwoArtifactAndAssembled() {
+    var json = PipelineFixtures.json();
+    var news = news();
+    var text = news.source().text();
+    var span = new SourceRef(news.source().id(), text, 0, text.length());
+    var deadline = Instant.now().plus(java.time.Duration.ofDays(60));
+    var conditionId = UUID.fromString("cccccccc-0000-4000-8000-000000000010");
+    var predictionId = UUID.fromString("cccccccc-0000-4000-8000-000000000011");
+
+    var fact = new ProtocolModel.Fact(
+      FACT_ID,
+      text,
+      "the source states this",
+      List.of(span),
+      ProtocolModel.ProofStatus.REPORTED
+    );
+    var variable = new ProtocolModel.Variable(
+      UUID.randomUUID(), "续约费率", "UNKNOWN", "谈判中", ProtocolModel.Direction.UNCHANGED,
+      "尚未确定", "费率决定下游成本", "续约费率仍在谈判", "双方已启动谈判",
+      List.of(FACT_ID), List.of(span), 30
+    );
+    var mechanism = new ProtocolModel.Mechanism(
+      UUID.randomUUID(), "续约费率", FACT_ID.toString(), ProtocolModel.SupportLevel.PLAUSIBLE,
+      "到期触发重新议价", "协议期限与谈判时间一致", List.of("双方均有续约意愿"),
+      List.of(FACT_ID), List.of(span), null, 25
+    );
+    var hypothesis = new ProtocolModel.Hypothesis(
+      HYPOTHESIS_ID, "协议到期推动续约谈判", "协议到期是本季度谈判启动的原因",
+      "协议期限与谈判时间一致", List.of(FACT_ID), List.of(), List.of(),
+      List.of("双方均有续约意愿"), List.of(), List.of(conditionId), "rubric", null
+    );
+    var condition = new ProtocolModel.FalsificationCondition(
+      conditionId, HYPOTHESIS_ID, "续约公告", "是否出现谈判记录",
+      "若 90 天内没有出现任何续约谈判记录则条件成立", "若 90 天内仍无谈判记录，则该假设被证伪"
+    );
+    var prediction = new ProtocolModel.Prediction(
+      predictionId, HYPOTHESIS_ID, "下一份公告将披露续约结果", "续约公告", deadline,
+      "确认需公告披露续约；部分确认需仅披露谈判进展；拒绝需公告称不再续约",
+      "公司公告页", ProtocolModel.PredictionStatus.OPEN, List.of(FACT_ID)
+    );
+    var plan = new ProtocolModel.PlanItem(
+      UUID.randomUUID(), "续约公告中的费率", "公司公告页",
+      "公告披露费率低于上期", "公告披露费率高于上期", ProtocolModel.PlanPriority.HIGH,
+      deadline, HYPOTHESIS_ID, predictionId, "跟踪费率公告", "费率是核心变量",
+      List.of(span), 25
+    );
+    var stageTwo = new TwoStageModel.Reasoning(
+      "协议到期推动本季度续约谈判。",
+      List.of(variable), List.of(mechanism), List.of(), List.of(), List.of(),
+      List.of(hypothesis), List.of(), List.of(), List.of(condition), List.of(),
+      List.of(plan), List.of(prediction), List.of()
+    );
+
+    var gateway = new ScriptedGateway();
+    gateway.reply(ModelPurpose.FACT_EXTRACTION, json.write(new TwoStageModel.Facts(List.of(fact), List.of())));
+    gateway.reply(ModelPurpose.SYNTHESIS, json.write(stageTwo));
+    var runs = new PipelineFixtures.RecordingRuns();
+    var state = state(news);
+
+    var result = analyze(service(gateway, runs, json), state);
+
+    // ---- the chain, end to end --------------------------------------------
+    assertEquals(1, result.facts().size());
+    assertEquals(FACT_ID, result.facts().getFirst().id());
+    assertEquals(text, result.facts().getFirst().statement());
+    assertEquals(1, result.variables().size());
+    assertTrue(result.variables().getFirst().factRefs().contains(FACT_ID));
+    assertEquals(1, result.mechanisms().size());
+    assertEquals("PLAUSIBLE", result.mechanisms().getFirst().supportLevel());
+    assertEquals(1, result.hypotheses().size());
+    assertTrue(result.hypotheses().getFirst().supportingFactRefs().contains(FACT_ID));
+    assertEquals(1, result.falsificationConditions().size());
+    assertEquals(1, result.verificationIndicators().size());
+    assertEquals(1, result.predictions().size());
+    assertTrue(result.predictions().getFirst().expectedBy().isAfter(Instant.now()));
+
+    // ---- and the gates -----------------------------------------------------
+    assertEquals(ConfidenceMethod.RUBRIC, result.confidenceAssessment().method());
+    assertEquals("0.1", result.confidenceAssessment().rubricVersion());
+    assertEquals(2, runs.all().size(), "both stages are audited");
+    assertTrue(
+      result.provenance().promptVersions().contains("two-stage-facts-v1")
+    );
+    assertTrue(
+      result.provenance().promptVersions().contains("two-stage-reasoning-v2")
     );
   }
 
@@ -454,7 +622,7 @@ class TwoStageSynthesisTest {
       result.provenance().promptVersions()
     );
     assertTrue(
-      result.provenance().promptVersions().contains("two-stage-reasoning-v1")
+      result.provenance().promptVersions().contains("two-stage-reasoning-v2")
     );
   }
 
@@ -504,7 +672,7 @@ class TwoStageSynthesisTest {
       byPurpose.get(ModelPurpose.FACT_EXTRACTION).promptVersion()
     );
     assertEquals(
-      "two-stage-reasoning-v1",
+      "two-stage-reasoning-v2",
       byPurpose.get(ModelPurpose.SYNTHESIS).promptVersion()
     );
     for (var run : runs.all()) {
@@ -535,6 +703,83 @@ class TwoStageSynthesisTest {
       1,
       runs.all().stream().filter(r -> "FAILED".equals(r.status())).count(),
       "the failed stage is audited as failed"
+    );
+  }
+
+  // ---- 16. the per-analysis budget ------------------------------------------
+
+  /**
+   * The call ceiling covers every attempt of both stages. With a ceiling of one,
+   * stage 1's repair round cannot spend a second request, so the analysis stops
+   * instead of consuming a metered budget.
+   */
+  @Test
+  void theProviderCallCeilingStopsFurtherAttempts() {
+    var json = PipelineFixtures.json();
+    var news = news();
+    var gateway = new ScriptedGateway();
+    gateway.reply(ModelPurpose.FACT_EXTRACTION, "{ not a facts reply");
+    var runs = new PipelineFixtures.RecordingRuns();
+    var state = state(news);
+
+    var failure = assertThrows(StageFailure.class, () ->
+      analyze(serviceWithBudgets(gateway, runs, json, 0, 0, 0, 0, 1, 0L), state)
+    );
+
+    assertEquals(TwoStageSynthesisService.FACTS_STAGE, failure.stage());
+    assertEquals(
+      1,
+      gateway.requests().size(),
+      "the ceiling allowed exactly one provider request"
+    );
+    assertTrue(
+      failure.jobMessage().contains("provider call budget exhausted"),
+      failure.jobMessage()
+    );
+    assertEquals(0, gateway.count(ModelPurpose.SYNTHESIS));
+  }
+
+  /** The total deadline stops the second stage from starting at all. */
+  @Test
+  void theTotalDeadlineStopsTheSecondStage() {
+    var json = PipelineFixtures.json();
+    var news = news();
+    var gateway = new ScriptedGateway();
+    gateway.reply(ModelPurpose.FACT_EXTRACTION, validFacts(news));
+    gateway.reply(ModelPurpose.SYNTHESIS, validReasoning());
+    // Stage 1 outlives the 1 ms analysis budget, so the deadline is deterministic
+    // rather than a race between two in-memory calls.
+    gateway.delayMs = 20L;
+    var runs = new PipelineFixtures.RecordingRuns();
+    var state = state(news);
+
+    var failure = assertThrows(StageFailure.class, () ->
+      analyze(serviceWithBudgets(gateway, runs, json, 0, 0, 0, 0, 4, 1L), state)
+    );
+
+    assertEquals(TwoStageSynthesisService.REASONING_STAGE, failure.stage());
+    assertEquals(
+      1,
+      gateway.requests().size(),
+      "no second request once the analysis budget is spent"
+    );
+    assertTrue(
+      failure.jobMessage().contains("total-timeout-ms"),
+      failure.jobMessage()
+    );
+  }
+
+  /** An out-of-contract stage budget is a startup error, not a failed paid call. */
+  @Test
+  void anOutOfRangeStageBudgetFailsAtStartup() {
+    var json = PipelineFixtures.json();
+    var gateway = new ScriptedGateway();
+    var runs = new PipelineFixtures.RecordingRuns();
+    assertThrows(IllegalStateException.class, () ->
+      serviceWithBudgets(gateway, runs, json, 99_999, 0, 0, 0, 4, 0L)
+    );
+    assertThrows(IllegalStateException.class, () ->
+      serviceWithBudgets(gateway, runs, json, 0, 500, 0, 0, 4, 0L)
     );
   }
 

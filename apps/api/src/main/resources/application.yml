@@ -57,10 +57,24 @@ ai:
       max-attempts: ${AI_TWO_STAGE_FACTS_MAX_ATTEMPTS:${AI_RETRY_MAX_ATTEMPTS:2}}
       max-repair-attempts: ${AI_TWO_STAGE_FACTS_MAX_REPAIR_ATTEMPTS:${AI_RETRY_MAX_REPAIR_ATTEMPTS:1}}
       backoff-ms: ${AI_TWO_STAGE_FACTS_BACKOFF_MS:${AI_RETRY_BACKOFF_MS:250}}
+      max-tokens: ${AI_TWO_STAGE_FACTS_MAX_TOKENS:0}
+      timeout: ${AI_TWO_STAGE_FACTS_TIMEOUT:0}
     reasoning:
       max-attempts: ${AI_TWO_STAGE_REASONING_MAX_ATTEMPTS:${AI_RETRY_MAX_ATTEMPTS:2}}
       max-repair-attempts: ${AI_TWO_STAGE_REASONING_MAX_REPAIR_ATTEMPTS:${AI_RETRY_MAX_REPAIR_ATTEMPTS:1}}
       backoff-ms: ${AI_TWO_STAGE_REASONING_BACKOFF_MS:${AI_RETRY_BACKOFF_MS:250}}
+      max-tokens: ${AI_TWO_STAGE_REASONING_MAX_TOKENS:0}
+      timeout: ${AI_TWO_STAGE_REASONING_TIMEOUT:0}
+    # Optional per-stage budget overrides. 0 means "inherit the profile the stage
+    # routes to", which stays the default so nothing changes unless a deployment
+    # asks for it. max-tokens must be 128..32000 and timeout 1..120 (the
+    # ModelProfile contract bounds) or startup fails loudly.
+    # max-provider-calls is a hard per-analysis ceiling covering every attempt of
+    # both stages, including retry and repair.
+    # total-timeout-ms, when non-zero, is a per-analysis deadline: a stage that
+    # would start after it fails without making another request.
+    max-provider-calls: ${AI_TWO_STAGE_MAX_PROVIDER_CALLS:4}
+    total-timeout-ms: ${AI_TWO_STAGE_TOTAL_TIMEOUT_MS:0}
   routes:
     FAST_ANALYSIS: analysis.fast
     DEEP_ANALYSIS: analysis.deep

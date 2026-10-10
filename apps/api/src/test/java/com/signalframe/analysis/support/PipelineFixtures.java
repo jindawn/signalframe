@@ -215,6 +215,12 @@ public final class PipelineFixtures {
       0L,
       2,
       1,
+      0L,
+      0,
+      0,
+      0,
+      0,
+      4,
       0L
     );
   }

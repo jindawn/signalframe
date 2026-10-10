@@ -9,6 +9,7 @@ import com.signalframe.contract.*;
 import com.signalframe.shared.JsonCodec;
 import com.signalframe.shared.confidence.ConfidenceRubric;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -78,11 +79,23 @@ public class TwoStageSynthesisService {
     List<DomainAnalysisStrategy> strategies
   ) {}
 
+  /** Bounds mirrored from the generated ModelProfile contract, checked at startup. */
+  static final int MIN_MAX_TOKENS = 128;
+  static final int MAX_MAX_TOKENS = 32_000;
+  static final int MIN_TIMEOUT = 1;
+  static final int MAX_TIMEOUT = 120;
+
   private final ModelRetryPolicy factsPolicy;
   private final ModelRetryPolicy reasoningPolicy;
   private final String factsSchema;
   private final String reasoningSchema;
   private final TwoStageAssembly assembly;
+  private final int factsMaxTokensOverride;
+  private final int factsTimeoutOverride;
+  private final int reasoningMaxTokensOverride;
+  private final int reasoningTimeoutOverride;
+  private final int maxProviderCalls;
+  private final long totalTimeoutMs;
 
   public TwoStageSynthesisService(
     ModelRouter router,
@@ -109,7 +122,13 @@ public class TwoStageSynthesisService {
     ) int reasoningMaxRepair,
     @Value(
       "${ai.two-stage.reasoning.backoff-ms:${ai.retry.backoff-ms:250}}"
-    ) long reasoningBackoff
+    ) long reasoningBackoff,
+    @Value("${ai.two-stage.facts.max-tokens:0}") int factsMaxTokensOverride,
+    @Value("${ai.two-stage.facts.timeout:0}") int factsTimeoutOverride,
+    @Value("${ai.two-stage.reasoning.max-tokens:0}") int reasoningMaxTokensOverride,
+    @Value("${ai.two-stage.reasoning.timeout:0}") int reasoningTimeoutOverride,
+    @Value("${ai.two-stage.max-provider-calls:4}") int maxProviderCalls,
+    @Value("${ai.two-stage.total-timeout-ms:0}") long totalTimeoutMs
   ) {
     this.deps = new ModelAnalysisDeps(
       router,
@@ -140,6 +159,93 @@ public class TwoStageSynthesisService {
       REASONING_SCHEMA_ROOTS
     );
     this.assembly = new TwoStageAssembly(validator, json, rubric, strategies);
+    // A stage budget is deployment configuration, so an out-of-contract value is a
+    // configuration error at startup rather than a failed paid call later.
+    this.factsMaxTokensOverride = requireRange(
+      "ai.two-stage.facts.max-tokens",
+      factsMaxTokensOverride,
+      0,
+      MIN_MAX_TOKENS,
+      MAX_MAX_TOKENS
+    );
+    this.factsTimeoutOverride = requireRange(
+      "ai.two-stage.facts.timeout",
+      factsTimeoutOverride,
+      0,
+      MIN_TIMEOUT,
+      MAX_TIMEOUT
+    );
+    this.reasoningMaxTokensOverride = requireRange(
+      "ai.two-stage.reasoning.max-tokens",
+      reasoningMaxTokensOverride,
+      0,
+      MIN_MAX_TOKENS,
+      MAX_MAX_TOKENS
+    );
+    this.reasoningTimeoutOverride = requireRange(
+      "ai.two-stage.reasoning.timeout",
+      reasoningTimeoutOverride,
+      0,
+      MIN_TIMEOUT,
+      MAX_TIMEOUT
+    );
+    if (maxProviderCalls < 1) throw new IllegalStateException(
+      "ai.two-stage.max-provider-calls must be at least 1"
+    );
+    if (totalTimeoutMs < 0) throw new IllegalStateException(
+      "ai.two-stage.total-timeout-ms must not be negative"
+    );
+    this.maxProviderCalls = maxProviderCalls;
+    this.totalTimeoutMs = totalTimeoutMs;
+  }
+
+  /** 0 means "inherit the routed profile"; anything else must be in contract range. */
+  private static int requireRange(
+    String key,
+    int value,
+    int disabled,
+    int min,
+    int max
+  ) {
+    if (value == disabled) return value;
+    if (value < min || value > max) throw new IllegalStateException(
+      key +
+      " must be 0 (inherit the routed profile) or between " +
+      min +
+      " and " +
+      max +
+      ", got " +
+      value
+    );
+    return value;
+  }
+
+  /** The provider-call ceiling in force for one analysis. */
+  public int maxProviderCalls() {
+    return maxProviderCalls;
+  }
+
+  /** The total analysis deadline in force, or 0 when no total budget is set. */
+  public long totalTimeoutMs() {
+    return totalTimeoutMs;
+  }
+
+  /** The profile a stage will actually call, with its own budget applied. */
+  public ModelProfile stageProfile(ModelPurpose purpose, int maxTokens, int timeout) {
+    var routed = deps.router().route(purpose);
+    if (maxTokens == 0 && timeout == 0) return routed;
+    return new ModelProfile(
+      routed.provider(),
+      routed.model(),
+      routed.baseUrl(),
+      routed.apiKeyEnv(),
+      routed.temperature(),
+      maxTokens == 0 ? routed.maxTokens() : maxTokens,
+      timeout == 0 ? routed.timeout() : timeout,
+      routed.structuredOutput(),
+      routed.toolCalling(),
+      routed.enabled()
+    );
   }
 
   /** The retry policy in force for each stage; exposed for diagnostics and tests. */
@@ -182,21 +288,33 @@ public class TwoStageSynthesisService {
     PipelineState state,
     String guidance
   ) {
+    // One budget for the whole analysis: a hard ceiling on provider requests and,
+    // when configured, a deadline that stops the second stage from starting once
+    // the budget is spent. Both are per-analysis, so no stage can spend more than
+    // its share and the job cannot spend more than the deployment allows.
+    var budget = new ProviderCallBudget(deps.gateway(), maxProviderCalls);
     var factsClient = new StageModelClient(
       deps.router(),
-      deps.gateway(),
+      budget,
       deps.runs(),
       factsPolicy
     );
     var reasoningClient = new StageModelClient(
       deps.router(),
-      deps.gateway(),
+      budget,
       deps.runs(),
       reasoningPolicy
     );
+    var deadline = totalTimeoutMs == 0L ? null : Instant.now().plusMillis(totalTimeoutMs);
 
+    requireNotCancelled(FACTS_STAGE);
     var factsPrompt = factsPrompt();
     var stageOne = factsClient.invoke(
+      stageProfile(
+        ModelPurpose.FACT_EXTRACTION,
+        factsMaxTokensOverride,
+        factsTimeoutOverride
+      ),
       new StageModelClient.StageCall(
         FACTS_STAGE,
         jobId,
@@ -210,8 +328,15 @@ public class TwoStageSynthesisService {
     );
 
     var withFacts = state.withFacts(stageOne.value());
+    requireWithinDeadline(deadline, REASONING_STAGE);
+    requireNotCancelled(REASONING_STAGE);
     var reasoningPrompt = reasoningPrompt();
     var reasoning = reasoningClient.invoke(
+      stageProfile(
+        ModelPurpose.SYNTHESIS,
+        reasoningMaxTokensOverride,
+        reasoningTimeoutOverride
+      ),
       new StageModelClient.StageCall(
         REASONING_STAGE,
         jobId,
@@ -234,11 +359,70 @@ public class TwoStageSynthesisService {
     )
       .executed(FACTS_STAGE, factsPrompt.version())
       .executed(REASONING_STAGE, reasoningPrompt.version());
+    requireWithinDeadline(deadline, "TwoStageAssembly");
     return new TwoStageResult(
       assembly.assemble(assembledState, "TwoStageAssembly"),
       factsPrompt.version(),
       reasoningPrompt.version()
     );
+  }
+
+  /** Interruption is the only cancellation this in-process queue supports. */
+  private static void requireNotCancelled(String stage) {
+    if (Thread.currentThread().isInterrupted()) throw new StageFailure(
+      stage,
+      StageFailure.Kind.PROVIDER_FAILURE,
+      "the analysis was cancelled before this stage started"
+    );
+  }
+
+  private static void requireWithinDeadline(Instant deadline, String stage) {
+    if (deadline != null && Instant.now().isAfter(deadline)) {
+      throw new StageFailure(
+        stage,
+        StageFailure.Kind.TIMEOUT,
+        "the analysis exceeded ai.two-stage.total-timeout-ms before " +
+        stage +
+        " could start; no further provider call was made"
+      );
+    }
+  }
+
+  /**
+   * A per-analysis ceiling on provider requests.
+   *
+   * <p>It is a {@link ModelGateway} decorator, so it needs no change to the gateway
+   * or the adapter and applies to every attempt of both stages, including the
+   * bounded retry and the repair round. Exceeding it is a configuration-class,
+   * non-retryable failure: the retry loop stops immediately instead of spending
+   * more of a metered budget.
+   */
+  static final class ProviderCallBudget implements ModelGateway {
+
+    private final ModelGateway delegate;
+    private final int limit;
+    private final java.util.concurrent.atomic.AtomicInteger used =
+      new java.util.concurrent.atomic.AtomicInteger();
+
+    ProviderCallBudget(ModelGateway delegate, int limit) {
+      this.delegate = delegate;
+      this.limit = limit;
+    }
+
+    int used() {
+      return used.get();
+    }
+
+    @Override
+    public ModelResponse call(ModelRequest request) {
+      if (used.incrementAndGet() > limit) throw ModelInvocationException.of(
+        ModelFailure.CONFIGURATION,
+        "provider call budget exhausted: this analysis already made " +
+        limit +
+        " request(s), the ceiling set by ai.two-stage.max-provider-calls"
+      );
+      return delegate.call(request);
+    }
   }
 
   // ---- stage 1 -------------------------------------------------------------
@@ -344,14 +528,14 @@ public class TwoStageSynthesisService {
     var firstOrder = deps
       .reader()
       .firstOrderEffects(
-        envelope("firstOrderEffects", parsed.firstOrderEffects(), List.of()),
+        envelope("effects", parsed.firstOrderEffects(), List.of()),
         state
       )
       .value();
     var secondOrder = deps
       .reader()
       .secondOrderEffects(
-        envelope("secondOrderEffects", parsed.secondOrderEffects(), List.of()),
+        envelope("effects", parsed.secondOrderEffects(), List.of()),
         state
       )
       .value();

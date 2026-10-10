@@ -6,6 +6,8 @@ import com.signalframe.contract.*;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -29,6 +31,10 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class StageModelClient {
+
+  private static final Logger log = LoggerFactory.getLogger(
+    StageModelClient.class
+  );
 
   /** Parser for one stage's typed artifact; throws {@link StageOutputException}. */
   @FunctionalInterface
@@ -92,7 +98,22 @@ public class StageModelClient {
   }
 
   public <T> T invoke(StageCall call, StageParser<T> parser) {
-    var profile = router.route(call.purpose());
+    return invoke(router.route(call.purpose()), call, parser);
+  }
+
+  /**
+   * The same call against an explicit profile.
+   *
+   * <p>Routing by purpose is unchanged and remains the default. This overload
+   * exists so a caller that owns a per-stage budget can pass a profile derived
+   * from the routed one, without the adapter or the gateway learning anything
+   * about providers, models or stages.
+   */
+  public <T> T invoke(
+    ModelProfile profile,
+    StageCall call,
+    StageParser<T> parser
+  ) {
     StageFailure.Kind lastKind = StageFailure.Kind.MALFORMED_OUTPUT;
     String lastHint = null;
     for (
@@ -128,12 +149,25 @@ public class StageModelClient {
             pause();
             continue;
           }
+          // The redacted provider detail travels with the failure: the audit row
+          // keeps the frozen shape and the classification only, so without it a
+          // failed paid attempt cannot be told apart from any other failure with
+          // the same code.
+          log.warn(
+            "Stage call failed stage={} code={} retryable={} detail={}",
+            call.stage(),
+            failure.code(),
+            failure.retryable(),
+            failure.detail()
+          );
           throw new StageFailure(
             call.stage(),
             failure.failure() == ModelFailure.TIMEOUT
               ? StageFailure.Kind.TIMEOUT
               : StageFailure.Kind.PROVIDER_FAILURE,
-            failure.code()
+            failure.detail().isBlank()
+              ? failure.code()
+              : failure.code() + ": " + failure.detail()
           );
         } catch (RuntimeException unexpected) {
           audit(
