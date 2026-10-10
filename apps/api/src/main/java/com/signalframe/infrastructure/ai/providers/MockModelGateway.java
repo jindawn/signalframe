@@ -62,14 +62,32 @@ public class MockModelGateway implements ModelGateway, ModelProviderAdapter {
       quote,
       "用户提供的原文陈述，尚未独立核实。",
       40,
-      refs
+      refs,
+      "REPORTED"
     );
+    // UNKNOWN is a first-class output (EP-01/EP-06) and is never mixed into a list
+    // that requires an interpretation.
     var unknown = new Statement(
+      ClaimType.UNKNOWN,
+      "需要独立来源验证",
+      "Mock 仅演示结构与流程，不生成真实研究判断。",
+      20,
+      refs,
+      List.of(),
+      List.of(),
+      null,
+      null
+    );
+    var interpretation = new Statement(
       ClaimType.INFERENCE,
       "需要独立来源验证",
       "Mock 仅演示结构与流程，不生成真实研究判断。",
       20,
-      refs
+      refs,
+      List.of(),
+      List.of(),
+      null,
+      null
     );
     var variable = new Variable(
       UUID.randomUUID(),
@@ -79,13 +97,29 @@ public class MockModelGateway implements ModelGateway, ModelProviderAdapter {
       "核心变量仍需研究",
       "演示占位，不推断方向。",
       20,
-      refs
+      refs,
+      null,
+      null,
+      null,
+      null,
+      List.of()
+    );
+    var falsification = new Statement(
+      ClaimType.INFERENCE,
+      "独立原始记录与报道不一致时，放弃该假设。",
+      "可证伪条件示例。",
+      30,
+      refs,
+      List.of(),
+      List.of(),
+      null,
+      null
     );
     var hypothesis = new Hypothesis(
       UUID.randomUUID(),
       "待验证：报道中的变化是否持续",
       "需要后续证据确认变化的持续性。",
-      "OPEN",
+      HypothesisStatus.OPEN,
       "仅有单一输入来源，缺少独立验证。",
       now,
       now,
@@ -93,7 +127,14 @@ public class MockModelGateway implements ModelGateway, ModelProviderAdapter {
       "报道中的变化可能持续",
       "演示假设，不代表研究结论。",
       30,
-      refs
+      refs,
+      List.of(fact.id()),
+      List.of(),
+      List.of(),
+      List.of("演示：未检索独立来源"),
+      List.of(),
+      List.of(falsification),
+      ConfidenceBand.LOW
     );
     var indicator = new Indicator(
       UUID.randomUUID(),
@@ -105,7 +146,13 @@ public class MockModelGateway implements ModelGateway, ModelProviderAdapter {
       "复核同一报道的核心主张",
       "当前没有独立证据。",
       20,
-      refs
+      refs,
+      "寻找原始公告与可重复数据",
+      "找到独立来源并核对同一主张",
+      "只有同一来源重复该主张",
+      "HIGH",
+      null,
+      hypothesis.id()
     );
     var result = new AnalysisResult(
       "演示分析 · " + request.news().title(),
@@ -113,27 +160,34 @@ public class MockModelGateway implements ModelGateway, ModelProviderAdapter {
       List.of(variable),
       List.of(),
       List.of(),
-      List.of(unknown),
+      List.of(interpretation),
       List.of(),
       List.of(hypothesis),
-      List.of(unknown),
-      List.of(unknown),
-      List.of(
-        new Statement(
-          ClaimType.INFERENCE,
-          "独立原始记录与报道不一致时，放弃该假设。",
-          "可证伪条件示例。",
-          30,
-          refs
-        )
-      ),
+      List.of(interpretation),
+      List.of(interpretation),
+      List.of(falsification),
       List.of(),
       List.of(indicator),
       List.of(unknown),
-      new ConfidenceAssessment(30, "Mock 演示：单一来源，未独立验证。", false),
+      // A model number is advisory only (EP-09/CF-01): the pipeline's rubric is
+      // the sole source of the stored snapshot score.
+      new ConfidenceAssessment(
+        30,
+        "Mock 演示：单一来源，未独立验证。",
+        false,
+        ConfidenceBand.LOW,
+        ConfidenceMethod.MODEL_JUDGMENT,
+        null,
+        List.of(),
+        30
+      ),
       List.of(unknown),
       false,
-      true
+      true,
+      null,
+      List.of(),
+      "0.1",
+      null
     );
     return new ModelResponse(
       json.write(result),

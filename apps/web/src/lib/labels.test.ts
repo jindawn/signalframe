@@ -18,12 +18,14 @@ describe("contract vocabulary labels", () => {
       "INFERENCE",
       "HYPOTHESIS",
       "PREDICTION",
+      "UNKNOWN",
     ] as const) {
       expect(claimLabel[type].length).toBeGreaterThan(0);
       expect(claimGlyph[type].length).toBeGreaterThan(0);
     }
     expect(claimLabel.FACT).toBe("事实");
     expect(claimLabel.INFERENCE).toBe("推断");
+    expect(claimLabel.UNKNOWN).toBe("未知");
   });
 
   it("labels variable direction and stakeholder stance", () => {
@@ -43,5 +45,21 @@ describe("contract vocabulary labels", () => {
     expect(extractionLabel.NEEDS_TEXT).toContain("正文");
     expect(hypothesisStatusLabel.OPEN).toBe("开放");
     expect(modelRunStatusLabel.FAILED).toBe("失败");
+  });
+
+  it("labels the whole protocol hypothesis vocabulary", () => {
+    for (const status of [
+      "OPEN",
+      "STRENGTHENING",
+      "WEAKENING",
+      "CONFIRMED",
+      "REJECTED",
+      "UNRESOLVED",
+      "SUPPORTED",
+      "CHALLENGED",
+      "ARCHIVED",
+    ] as const) {
+      expect(hypothesisStatusLabel[status].length).toBeGreaterThan(0);
+    }
   });
 });

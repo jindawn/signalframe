@@ -1,4 +1,6 @@
-package com.signalframe.analysis.application.steps;
+package com.signalframe.shared.confidence;
+
+import com.signalframe.contract.ConfidenceBand;
 
 /**
  * Deterministic confidence scoring (CONFIDENCE_MODEL_V0_1 §9).
@@ -6,7 +8,9 @@ package com.signalframe.analysis.application.steps;
  * <p>Pure and framework-free: {@code score} is a function of
  * {@link ConfidenceInputs} and the rubric version only. It has no clock, no
  * network, no model and no randomness (CF-02/CF-04), so Gate D can recompute a
- * stored score and fail on any mismatch (CF-03/CF-08).
+ * stored score and fail on any mismatch (CF-03/CF-08). It consumes only generated
+ * contract records, so both {@code analysis} and {@code research} can use it
+ * without a module depending on the other (WAVE2_IMPLEMENTATION_PLAN §4.3).
  */
 public interface ConfidenceRubric {
   /** Frozen rubric version; any weight/level/cap change increments it (CF-07). */
@@ -30,10 +34,11 @@ public interface ConfidenceRubric {
       var a = recomputed.dimensions().get(i);
       var b = stored.dimensions().get(i);
       if (
-        !a.id().equals(b.id()) ||
-        a.level() != b.level() ||
-        a.points() != b.points() ||
-        a.weight() != b.weight()
+        !a.dimension().equals(b.dimension()) ||
+        !a.level().equals(b.level()) ||
+        !a.points().equals(b.points()) ||
+        RubricDimensions.weightOf(a.dimension()) !=
+        RubricDimensions.weightOf(b.dimension())
       ) return false;
     }
     return true;
@@ -42,5 +47,10 @@ public interface ConfidenceRubric {
   /** Canonical rubric implementation. */
   static ConfidenceRubric deterministic() {
     return new DeterministicConfidenceRubric();
+  }
+
+  /** Convenience for callers that only need the band of a score. */
+  static ConfidenceBand bandOf(int score) {
+    return ConfidenceBands.of(score);
   }
 }

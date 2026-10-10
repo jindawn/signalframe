@@ -361,7 +361,14 @@ public final class ProtocolModel {
     }
   }
 
-  /** STG-14 prediction: observable, time bounded, verifiable, linked. */
+  /**
+   * STG-14 prediction: observable, time bounded, verifiable, linked.
+   *
+   * <p>{@code basisFactRefs} is the SCH-07 provenance slot (EPISTEMIC_TYPES §4):
+   * the facts the prediction rests on. It is optional in the stage schema — the
+   * model may omit it — and an absent list reads as "no fact basis declared"
+   * rather than "no facts exist", so the reader never has to invent refs.
+   */
   public record Prediction(
     UUID id,
     UUID hypothesisRef,
@@ -370,11 +377,15 @@ public final class ProtocolModel {
     Instant expectedBy,
     String verificationCriteria,
     String whereToCheck,
-    PredictionStatus status
+    PredictionStatus status,
+    List<UUID> basisFactRefs
   ) {
     public Prediction {
       id = id == null ? UUID.randomUUID() : id;
       status = status == null ? PredictionStatus.OPEN : status;
+      basisFactRefs = basisFactRefs == null
+        ? List.of()
+        : List.copyOf(basisFactRefs);
     }
   }
 

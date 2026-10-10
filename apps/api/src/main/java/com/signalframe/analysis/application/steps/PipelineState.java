@@ -5,6 +5,7 @@ import com.signalframe.contract.AnalysisResult;
 import com.signalframe.contract.NewsItem;
 import com.signalframe.contract.NewsValueScore;
 import com.signalframe.contract.DomainType;
+import com.signalframe.shared.confidence.ConfidenceScore;
 import java.time.Instant;
 import java.util.*;
 

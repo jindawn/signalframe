@@ -40,7 +40,7 @@ public class JdbcAnalysisRepository implements AnalysisRepository {
     );
     for (var h : a.result().hypotheses()) {
       db.update(
-        "INSERT INTO hypotheses VALUES(?,?,?::jsonb,?,?,?)",
+        "INSERT INTO hypotheses(id,analysis_id,payload,confidence,created_at,updated_at) VALUES(?,?,?::jsonb,?,?,?)",
         h.id(),
         a.id(),
         json.write(h),
@@ -55,7 +55,9 @@ public class JdbcAnalysisRepository implements AnalysisRepository {
         null,
         h.confidence(),
         h.confidenceReason(),
-        h.createdAt()
+        h.createdAt(),
+        null,
+        h.status()
       );
       db.update(
         "INSERT INTO hypothesis_events VALUES(?,?,?::jsonb,?)",

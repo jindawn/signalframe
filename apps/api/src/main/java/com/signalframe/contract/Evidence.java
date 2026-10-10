@@ -10,5 +10,7 @@ public record Evidence(
     @jakarta.validation.Valid @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Min(0) @jakarta.validation.constraints.Max(100) Integer strength,
     @jakarta.validation.Valid @jakarta.validation.constraints.NotNull UUID sourceId,
     @jakarta.validation.Valid @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max=20000) String reason,
-    @jakarta.validation.Valid @jakarta.validation.constraints.NotNull Instant createdAt
+    @jakarta.validation.Valid @jakarta.validation.constraints.NotNull Instant createdAt,
+     java.util.List<@jakarta.validation.Valid UUID> factRefs,
+    @jakarta.validation.Valid UUID analysisId
 ) {}

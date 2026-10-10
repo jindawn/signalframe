@@ -257,7 +257,8 @@ class EpistemicGateTest {
       CREATED.plusSeconds(86_400L * 90),
       "confirmed if volume rises, rejected if it falls",
       "the company's investor page",
-      PredictionStatus.OPEN
+      PredictionStatus.OPEN,
+      List.of()
     );
     var gated = gate.execute(complete().withPredictions(List.of(prediction)));
     assertTrue(gated.predictions().isEmpty());
@@ -279,7 +280,8 @@ class EpistemicGateTest {
       CREATED.plusSeconds(86_400L * 90),
       "confirmed if volume rises, rejected if it falls",
       "the company's investor page",
-      PredictionStatus.OPEN
+      PredictionStatus.OPEN,
+      List.of()
     );
     var plan = new PlanItem(
       UUID.randomUUID(),

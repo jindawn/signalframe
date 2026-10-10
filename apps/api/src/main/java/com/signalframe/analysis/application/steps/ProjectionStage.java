@@ -5,6 +5,7 @@ import com.signalframe.analysis.application.strategies.DomainStrategyResolver;
 import com.signalframe.analysis.domain.DomainAnalysisStrategy;
 import com.signalframe.contract.JobStatus;
 import com.signalframe.shared.JsonCodec;
+import com.signalframe.shared.confidence.ConfidenceRubric;
 import java.util.List;
 import org.springframework.stereotype.Component;
 
@@ -63,8 +64,6 @@ public class ProjectionStage implements ProtocolStage {
     var strategy = DomainStrategyResolver.resolve(in.domain(), strategies);
     var projected = SnapshotProjection.project(
       in,
-      score,
-      inputs,
       rubric,
       DomainStrategyResolver.idOf(strategy)
     );
