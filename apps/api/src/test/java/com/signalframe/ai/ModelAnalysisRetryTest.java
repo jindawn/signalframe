@@ -110,7 +110,7 @@ class ModelAnalysisRetryTest {
     assertNull(saved.get(1).errorType());
     var first = saved.getFirst();
     assertEquals("corr-retry", first.correlationId());
-    assertEquals("synthesis-v1", first.promptVersion());
+    assertEquals("synthesis-v2", first.promptVersion());
     assertEquals(ModelPurpose.SYNTHESIS, first.purpose());
     assertEquals("mock", first.provider());
     assertEquals("mock-v1", first.model());
@@ -200,8 +200,16 @@ class ModelAnalysisRetryTest {
     verify(gateway, times(2)).call(requests.capture());
     assertFalse(requests.getAllValues().getFirst().repair());
     assertTrue(requests.getAllValues().get(1).repair());
+    // The repair attempt must still tell the model to return corrected JSON only,
+    // and must still point at the output contract it has to satisfy.
     assertTrue(
-      requests.getAllValues().get(1).prompt().contains("Return corrected JSON only")
+      requests.getAllValues().get(1).prompt().contains("Return the corrected JSON object only")
+    );
+    assertTrue(
+      requests.getAllValues().get(1).prompt().contains("output contract above")
+    );
+    assertTrue(
+      requests.getAllValues().get(1).prompt().contains("The previous reply was rejected")
     );
     var saved = captureRuns(runs, 2);
     assertEquals("OUTPUT_INVALID", saved.getFirst().errorType());

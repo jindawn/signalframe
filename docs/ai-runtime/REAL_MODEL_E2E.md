@@ -208,14 +208,19 @@ credential value.
 Found while validating the real path; each is outside the runtime boundary of
 this task and none of them was fixed here.
 
-1. **Output framing.** The assembled synthesis prompt ends with the untrusted
-   source JSON after the schema, and states the output contract only as "Output
-   only JSON matching AnalysisResult". Small and mid-size models therefore echo
-   the source object or wrap the result in `{"AnalysisResult": {...}}`. The
-   runtime classifies this correctly as `OUTPUT_INVALID`, repairs once and fails
-   the job cleanly, but a capable frontier model is required for the strict tier
-   to pass. Hardening the prompt/response framing is a separate change because
-   the analysis prompt text is out of scope here.
+1. **Output framing — fixed in `synthesis-v2`.** The synthesis prompt used to
+   state the output contract in its first sentence, then the schema, then the
+   untrusted source last. Small and mid-size models echoed the source object or
+   wrapped the result in `{"analysisResult": {...}}`, because the only text
+   adjacent to the reply was the source. Worse, a provider whose context window is
+   smaller than the prompt truncates from the middle and therefore discarded the
+   contract while keeping the source. `AnalysisPromptFrame` now orders the prompt
+   instructions → guidance → schema → fenced source → **output contract last**, and
+   `AnalysisOutputSchema` projects the schema down to the definitions reachable
+   from `AnalysisResult` (19 of 48, compact instead of pretty-printed), cutting the
+   assembled prompt by ~64% for the reference fixture. See §7 for the measured
+   sizes and the budget knob. Small models still fail, but they now fail on
+   content, not on shape.
 
 2. **`usage.total_tokens` is mandatory for the client.** The OpenAI Java client
    refuses to decode a `usage` object that omits `total_tokens`, so a provider
@@ -224,8 +229,8 @@ this task and none of them was fixed here.
    by `providerOmittingTotalTokensIsRejectedAsAnUndecodableBody`.
 
 3. **`timeout` is capped at 120 s** by the `ModelProfile` contract. A local 8B
-   model needs more than that for the ~7.6k-token synthesis prompt, so such a
-   model times out at the configured bound (`TIMEOUT`, retried, audited).
+   model needs more than that for the synthesis prompt, so such a model times out
+   at the configured bound (`TIMEOUT`, retried, audited).
 
 4. **`temperature` is always sent.** Models that reject a non-default
    temperature (for example some reasoning models) cannot be configured today,
@@ -234,6 +239,14 @@ this task and none of them was fixed here.
 5. **Provider-side pricing is never reported**, so `estimatedCost` is always
    `null` in the live path. Cost accounting for real providers is not
    implemented.
+
+6. **`prompt_tokens + max_tokens` must fit the provider context, and nothing
+   enforces it.** The prompt is now small enough to fit an 8 k context in
+   practice, but the runtime still cannot know a provider's window: `ModelProfile`
+   carries `maxTokens` and `timeout`, not a context size. A provider that does not
+   fit the prompt truncates silently and reports a smaller `prompt_tokens` than the
+   prompt actually was, so compare the audited `inputTokens` against the expected
+   size when an otherwise incomprehensible `OUTPUT_INVALID` appears.
 
 ## 6. Verification evidence
 
@@ -260,7 +273,8 @@ Real provider tiers, exercised against a local OpenAI-compatible server
 - the timeout tier passed with two audited `FAILED/TIMEOUT` attempts.
 
 The strict chain tier was not reachable with the models available on this
-machine, which is itself the recorded evidence for gaps 1 and 3:
+machine. The `synthesis-v1` framing produced these results, and is the recorded
+evidence for gap 1:
 
 ```
 gemma3:1b  -> FAILED/OUTPUT_INVALID      model wrapped the result in {"AnalysisResult":{...}}
@@ -268,8 +282,65 @@ llama3:8b  -> FAILED/OUTPUT_INVALID      model echoed the source object instead 
 qwen3:8b   -> FAILED/TIMEOUT, FAILED/TIMEOUT   >120 s for the ~7.6k-token prompt
 ```
 
-In every case the runtime behaved as designed: the call was attempted, the
-output was validated, repair ran once, the failure was classified, and every
-attempt was audited with its own status, latency and error code. A provider that
-satisfies the `AnalysisResult` contract is required for the strict tier to pass.
+Under `synthesis-v2` the same models were re-probed once each, and the failure
+moved from shape to content:
+
+```
+gemma3:1b     -> FAILED/OUTPUT_INVALID   replied with a 71-character fragment
+                                          {"claimType":"FACT","sourceRef":"…"} at a 4 818-token
+                                          prompt that fits its 32 k context: not capable of the task
+llama3:latest -> FAILED/OUTPUT_INVALID   replied with a complete, correctly shaped top-level
+                                          AnalysisResult (all 19 top-level keys, no wrapper) and was
+                                          rejected by bean validation for one missing nested field,
+                                          facts[0].id, at a 4 655-token prompt
+```
+
+Both probes were bounded and stopped after failure; neither is a pass, and the
+strict tier still requires a provider that satisfies the `AnalysisResult`
+contract. In every case the runtime behaved as designed: the call was attempted,
+the output was validated, repair ran once, the failure was classified, and every
+attempt was audited with its own status, latency and error code.
+
+## 7. Prompt size and the context budget
+
+`prompt_tokens + max_tokens` has to fit the provider's context window, and when
+it does not the provider truncates **silently** — Ollama keeps a few leading
+tokens plus the tail and drops the middle. Two consequences are built into the
+runtime:
+
+- The output contract is the **last** section of the assembled prompt, so it is
+  the first material that survives truncation (`AnalysisPromptFrame`).
+- The prompt is a **projection** of the generated schema, not the whole API
+  vocabulary: `AnalysisOutputSchema` keeps only the definitions reachable from
+  `AnalysisResult` and serializes them compactly.
+
+Measured on the reference fixture (a 461-character Chinese news item, domain
+ENERGY, 1 798 characters of strategy guidance):
+
+| section | `synthesis-v1` | `synthesis-v2` |
+| --- | --- | --- |
+| instructions | 1 093 | 1 002 |
+| guidance | 1 798 | 1 798 |
+| schema | 53 804 (48 schemas, pretty-printed) | 13 184 (19 schemas, compact) |
+| source | 461 | 461 |
+| output contract | — | 3 715 |
+| **total** | **57 094** | **20 444 (−64%)** |
+
+`ai.prompt.warn-chars` (default `60000`) is the operator's statement of what this
+deployment expects its provider to accept. Every assembled prompt logs its section
+breakdown at INFO, and crossing the threshold logs a WARN naming the provider and
+model: it changes no behaviour, because the request is still valid and the provider
+may well accept it, but it makes a silent truncation visible before it is
+misdiagnosed as a model defect.
+
+Sizing guidance, in the order that avoids waste:
+
+1. keep the prompt small rather than raising the output ceiling;
+2. size `max-tokens` to what the reply actually needs — the context has to hold
+   `prompt_tokens + max_tokens`, so an oversized ceiling shrinks the prompt budget
+   and can itself cause truncation;
+3. if a deployment needs a larger context, configure it on the provider
+   (Ollama: `num_ctx`, or `OLLAMA_CONTEXT_LENGTH`) — it is not part of the
+   OpenAI-compatible request that this runtime sends, and no per-model special
+   casing belongs in the adapter.
 

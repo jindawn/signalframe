@@ -478,7 +478,7 @@ class RealModelEndToEndTest {
       );
     assertEquals(PROVIDER, accepted.provider());
     assertEquals(MODEL, accepted.model());
-    assertEquals("synthesis-v1", accepted.promptVersion());
+    assertEquals("synthesis-v2", accepted.promptVersion());
     assertEquals(ModelPurpose.SYNTHESIS, accepted.purpose());
     assertTrue(accepted.latencyMs() > 0, "latency must be measured");
     assertNull(accepted.errorType());

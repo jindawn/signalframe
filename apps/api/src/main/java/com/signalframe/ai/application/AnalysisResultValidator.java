@@ -46,11 +46,21 @@ public class AnalysisResultValidator {
         malformed
       );
     }
-    if (
-      !validator.validate(r).isEmpty() ||
-      r.confidenceAssessment().isProbability() ||
-      r.modifiesExistingHypotheses()
-    ) throw new IllegalArgumentException("Invalid analysis schema");
+    // The message is what the bounded repair round replays to the model as its
+    // hint, so it must name the field that failed. A bare "Invalid analysis
+    // schema" told the model nothing it could act on: a reply that was otherwise
+    // complete and correct except for one missing nested id was rejected twice
+    // with no way for the model to learn which field to fix.
+    var violations = validator.validate(r);
+    if (!violations.isEmpty()) throw new IllegalArgumentException(
+      "Invalid analysis schema: " + describe(violations)
+    );
+    if (r.confidenceAssessment().isProbability()) throw new IllegalArgumentException(
+      "Invalid analysis schema: confidenceAssessment.isProbability must be false"
+    );
+    if (r.modifiesExistingHypotheses()) throw new IllegalArgumentException(
+      "Invalid analysis schema: modifiesExistingHypotheses must be false"
+    );
     if (r.facts().isEmpty()) throw new IllegalArgumentException(
       "Fact provenance is required"
     );
@@ -142,9 +152,28 @@ public class AnalysisResultValidator {
     return r;
   }
 
+  /**
+   * A bounded, single-line rendering of the bean-validation failures, ordered so
+   * a repair hint is stable for the same input.
+   */
+  private static String describe(
+    java.util.Set<? extends jakarta.validation.ConstraintViolation<AnalysisResult>> violations
+  ) {
+    var paths = violations
+      .stream()
+      .map(v -> v.getPropertyPath() + " " + v.getMessage())
+      .sorted()
+      .toList();
+    var shown = String.join("; ", paths.subList(0, Math.min(MAX_REPORTED_VIOLATIONS, paths.size())));
+    int remaining = paths.size() - Math.min(MAX_REPORTED_VIOLATIONS, paths.size());
+    return remaining > 0 ? shown + "; +" + remaining + " more" : shown;
+  }
+
+  /** Enough to identify the shape of the failure without flooding the repair hint. */
+  static final int MAX_REPORTED_VIOLATIONS = 6;
+
   /** Lists whose items make a claim about the facts and must be INFERENCE. */
-  private static List<List<Statement>> claimingLists(AnalysisResult r) {
-    return List.of(
+  private static List<List<Statement>> claimingLists(AnalysisResult r) {    return List.of(
       r.firstOrderEffects(),
       r.secondOrderEffects(),
       r.alternativeExplanations(),

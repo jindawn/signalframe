@@ -188,7 +188,7 @@ class AnalysisPipelineSliceTest {
       "corroborating-signals-v1",
       "prediction-generation-v1",
       "verification-plan-v1",
-      "synthesis-v1"
+      "synthesis-v2"
     )) assertTrue(versions.contains(expected), "missing audit row: " + expected);
     assertTrue(
       Arrays.stream(runs).allMatch(r -> "SUCCEEDED".equals(r.status()))

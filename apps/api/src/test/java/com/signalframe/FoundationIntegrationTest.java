@@ -131,7 +131,7 @@ class FoundationIntegrationTest {
     );
     assertFalse(analysis.result().confidenceAssessment().isProbability());
     var runs = request("GET", "/api/v1/model-runs?jobId=" + job.id(), null);
-    assertTrue(runs.body().contains("synthesis-v1"));
+    assertTrue(runs.body().contains("synthesis-v2"));
     assertTrue(runs.body().contains("SUCCEEDED"));
     assertFalse(runs.body().contains("apiKey"));
     var detail = json.read(

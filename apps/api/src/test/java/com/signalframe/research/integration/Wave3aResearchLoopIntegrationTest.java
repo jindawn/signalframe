@@ -453,7 +453,7 @@ class Wave3aResearchLoopIntegrationTest extends Wave2BIntegrationSupport {
     );
     assertFalse(runs.length == 0, "every attempt must be audited");
     assertTrue(Arrays.stream(runs).allMatch(run -> "SUCCEEDED".equals(run.status())));
-    assertTrue(Arrays.stream(runs).anyMatch(run -> "synthesis-v1".equals(run.promptVersion())));
+    assertTrue(Arrays.stream(runs).anyMatch(run -> "synthesis-v2".equals(run.promptVersion())));
     var audit = json.write(runs);
     assertFalse(audit.contains(NEWS_TEXT), "source text must never be audited");
     assertFalse(audit.contains(INDEPENDENT_TEXT), "source text must never be audited");
