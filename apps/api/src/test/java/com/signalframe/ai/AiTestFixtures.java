@@ -70,14 +70,25 @@ public final class AiTestFixtures {
     NewsItem news,
     String prompt
   ) {
+    return request(profile, news, prompt, UUID.randomUUID(), false);
+  }
+
+  /** A request bound to a known job id, so session stability can be asserted. */
+  public static ModelRequest request(
+    ModelProfile profile,
+    NewsItem news,
+    String prompt,
+    UUID jobId,
+    boolean repair
+  ) {
     return new ModelRequest(
-      UUID.randomUUID(),
+      jobId,
       ModelPurpose.SYNTHESIS,
       "synthesis-v1",
       prompt,
       news,
       profile,
-      false
+      repair
     );
   }
 

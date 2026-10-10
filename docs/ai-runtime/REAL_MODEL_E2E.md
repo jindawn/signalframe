@@ -58,6 +58,26 @@ A local server that ignores authentication still needs a **non-blank**
 `AI_FAST_API_KEY` value (any placeholder, for example `ollama`), because a blank
 value means "no key" and selects the offline adapter — see the next section.
 
+### Client identity and session correlation
+
+Two headers are added to every OpenAI-compatible request, both from `ai.client.*`
+(environment overrides `AI_CLIENT_USER_AGENT`, `AI_SESSION_HEADER_NAME`,
+`AI_SESSION_HEADER_ENABLED`):
+
+| header | value | why |
+| --- | --- | --- |
+| `User-Agent` | `SignalFrame/0.1.0` by default | identifies **this** runtime truthfully. It is never OpenCode, Claude Code, curl or a browser, and the identity is deployment configuration rather than a compiled-in constant. |
+| `x-opencode-session` *(name configurable)* | a UUID derived from the analysis job id | lets a gateway attribute the transport retry and the single bounded repair round of one analysis to one session. |
+
+The session value is derived (`AnalysisJob` id → `UUID.nameUUIDFromBytes`), not
+generated per call, so the first attempt, a transport retry, the repair round and
+every stage of one analysis all carry the same opaque session, and two analyses
+never share one. Set `AI_SESSION_HEADER_ENABLED=false`, or blank the header name,
+for a provider that does not want the header. The behaviour is pinned against the
+local stub server by `OpenAiClientCompatibilityTest`, which asserts the header
+reaches the wire, is stable across retry and repair, differs per analysis, and
+never impersonates another client.
+
 ### Live, Mock and Disabled
 
 `GET /api/v1/settings/model-profiles` reports the effective mode per profile and
