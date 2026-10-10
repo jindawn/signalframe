@@ -354,26 +354,47 @@ public class ModelAnalysisService {
     var usage = response == null || response.usage() == null
       ? new ModelUsage(null, null, null, null)
       : response.usage();
-    runs.save(
-      new ModelRun(
-        UUID.randomUUID(),
-        jobId,
-        response == null ? profile.provider() : response.provider(),
-        response == null ? profile.model() : response.model(),
-        ModelPurpose.SYNTHESIS,
-        promptVersion,
-        startedAt,
-        completedAt,
-        Duration.between(startedAt, completedAt).toMillis(),
-        usage.inputTokens(),
-        usage.outputTokens(),
-        usage.totalTokens(),
-        usage.estimatedCost(),
-        status,
-        errorCode,
-        correlationId
-      )
+    var run = new ModelRun(
+      UUID.randomUUID(),
+      jobId,
+      response == null ? profile.provider() : response.provider(),
+      response == null ? profile.model() : response.model(),
+      ModelPurpose.SYNTHESIS,
+      promptVersion,
+      startedAt,
+      completedAt,
+      Duration.between(startedAt, completedAt).toMillis(),
+      usage.inputTokens(),
+      usage.outputTokens(),
+      usage.totalTokens(),
+      usage.estimatedCost(),
+      status,
+      errorCode,
+      correlationId
     );
+    runs.save(run);
+    // The same facts the audit row carries, on the log, so a metered run can be
+    // reported without reaching for the database. Tokens and cost stay explicit
+    // about being unknown; no prompt, response body or credential is included.
+    log.info(
+      "ModelRun provider={} model={} purpose={} promptVersion={} status={} errorType={} latencyMs={} inputTokens={} outputTokens={} totalTokens={} estimatedCost={}",
+      run.provider(),
+      run.model(),
+      run.purpose(),
+      run.promptVersion(),
+      run.status(),
+      run.errorType(),
+      run.latencyMs(),
+      unknown(run.inputTokens()),
+      unknown(run.outputTokens()),
+      unknown(run.totalTokens()),
+      unknown(run.estimatedCost())
+    );
+  }
+
+  /** Renders an absent measurement as UNKNOWN rather than as a fabricated zero. */
+  private static Object unknown(Object value) {
+    return value == null ? "UNKNOWN" : value;
   }
 
   private void pause() {
