@@ -4,7 +4,21 @@ import com.signalframe.ai.application.*;
 import com.signalframe.ai.domain.*;
 import com.signalframe.analysis.application.AnalysisPipeline;
 import com.signalframe.analysis.application.steps.*;
+import com.signalframe.analysis.application.strategies.AiDomainStrategy;
+import com.signalframe.analysis.application.strategies.BusinessDomainStrategy;
+import com.signalframe.analysis.application.strategies.ConsumerDomainStrategy;
+import com.signalframe.analysis.application.strategies.DefaultDomainStrategy;
+import com.signalframe.analysis.application.strategies.EmploymentDomainStrategy;
+import com.signalframe.analysis.application.strategies.EnergyDomainStrategy;
+import com.signalframe.analysis.application.strategies.FinanceDomainStrategy;
+import com.signalframe.analysis.application.strategies.GeopoliticsDomainStrategy;
+import com.signalframe.analysis.application.strategies.HealthcareDomainStrategy;
+import com.signalframe.analysis.application.strategies.MacroDomainStrategy;
+import com.signalframe.analysis.application.strategies.PolicyDomainStrategy;
+import com.signalframe.analysis.application.strategies.RealEstateDomainStrategy;
+import com.signalframe.analysis.application.strategies.TechnologyAnalysisStrategy;
 import com.signalframe.analysis.domain.AnalysisRepository;
+import com.signalframe.analysis.domain.DomainAnalysisStrategy;
 import com.signalframe.analysis.domain.NewsValueScorer;
 import com.signalframe.analysis.application.DefaultNewsValueScorer;
 import com.signalframe.analysis.application.steps.ProtocolStage;
@@ -103,12 +117,29 @@ public final class PipelineFixtures {
     );
   }
 
-  public static StrategySelector strategies() {
-    return new StrategySelector(
-      List.of(
-        new com.signalframe.analysis.application.strategies.DefaultDomainStrategy(),
-        new com.signalframe.analysis.application.strategies.TechnologyAnalysisStrategy()
-      )
+  /**
+   * Every domain strategy the application context injects, in a fixed order.
+   *
+   * <p>The pipeline never selects by list order: {@code DomainStrategyResolver}
+   * decides by specificity and rejects a duplicate top specificity (DS-04), so
+   * this list is deliberately built in a different order than the strategy
+   * package and still yields the same selection.
+   */
+  public static List<DomainAnalysisStrategy> strategies() {
+    return List.of(
+      new DefaultDomainStrategy(),
+      new ConsumerDomainStrategy(),
+      new AiDomainStrategy(),
+      new BusinessDomainStrategy(),
+      new EmploymentDomainStrategy(),
+      new EnergyDomainStrategy(),
+      new FinanceDomainStrategy(),
+      new GeopoliticsDomainStrategy(),
+      new HealthcareDomainStrategy(),
+      new MacroDomainStrategy(),
+      new PolicyDomainStrategy(),
+      new RealEstateDomainStrategy(),
+      new TechnologyAnalysisStrategy()
     );
   }
 

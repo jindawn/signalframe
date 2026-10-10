@@ -1,8 +1,11 @@
 package com.signalframe.analysis.application.steps;
 
 import com.signalframe.ai.application.ModelAnalysisService;
+import com.signalframe.analysis.application.strategies.DomainStrategyResolver;
+import com.signalframe.analysis.domain.DomainAnalysisStrategy;
 import com.signalframe.contract.JobStatus;
 import java.util.ArrayList;
+import java.util.List;
 import org.springframework.stereotype.Component;
 
 /**
@@ -35,18 +38,18 @@ public class SynthesisStage implements ProtocolStage {
 
   private final ModelAnalysisService model;
   private final PromptLibrary promptLibrary;
-  private final StrategySelector strategies;
+  private final List<DomainAnalysisStrategy> strategies;
   private final AnalysisPipelineMode pipelineMode;
 
   public SynthesisStage(
     ModelAnalysisService model,
     PromptLibrary promptLibrary,
-    StrategySelector strategies,
+    List<DomainAnalysisStrategy> strategies,
     AnalysisPipelineMode pipelineMode
   ) {
     this.model = model;
     this.promptLibrary = promptLibrary;
-    this.strategies = strategies;
+    this.strategies = List.copyOf(strategies);
     this.pipelineMode = pipelineMode;
   }
 
@@ -62,7 +65,7 @@ public class SynthesisStage implements ProtocolStage {
       );
       return in.executed(NAME, null);
     }
-    var strategy = strategies.select(in.domain());
+    var strategy = DomainStrategyResolver.resolve(in.domain(), strategies);
     var guidance =
       "Summarize ONLY the validated artifacts below. Do not introduce facts, causal claims or sources that are not listed. " +
       "Every artifact is already labelled; keep FACT/INFERENCE/HYPOTHESIS separation.\n" +

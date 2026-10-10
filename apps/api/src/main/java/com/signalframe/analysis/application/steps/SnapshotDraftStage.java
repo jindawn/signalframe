@@ -1,8 +1,11 @@
 package com.signalframe.analysis.application.steps;
 
 import com.signalframe.ai.application.ModelAnalysisService;
+import com.signalframe.analysis.application.strategies.DomainStrategyResolver;
+import com.signalframe.analysis.domain.DomainAnalysisStrategy;
 import com.signalframe.contract.JobStatus;
 import com.signalframe.shared.JsonCodec;
+import java.util.List;
 import org.springframework.stereotype.Component;
 
 /**
@@ -32,20 +35,20 @@ public class SnapshotDraftStage implements ProtocolStage {
   private final ModelAnalysisService model;
   private final JsonCodec json;
   private final PromptLibrary promptLibrary;
-  private final StrategySelector strategies;
+  private final List<DomainAnalysisStrategy> strategies;
   private final AnalysisPipelineMode pipelineMode;
 
   public SnapshotDraftStage(
     ModelAnalysisService model,
     JsonCodec json,
     PromptLibrary promptLibrary,
-    StrategySelector strategies,
+    List<DomainAnalysisStrategy> strategies,
     AnalysisPipelineMode pipelineMode
   ) {
     this.model = model;
     this.json = json;
     this.promptLibrary = promptLibrary;
-    this.strategies = strategies;
+    this.strategies = List.copyOf(strategies);
     this.pipelineMode = pipelineMode;
   }
 
@@ -56,7 +59,7 @@ public class SnapshotDraftStage implements ProtocolStage {
       in.news().source().text(),
       in.news().title()
     );
-    var strategy = strategies.select(domain);
+    var strategy = DomainStrategyResolver.resolve(domain, strategies);
     var draft = model.synthesize(
       in.jobId(),
       in.correlationId(),

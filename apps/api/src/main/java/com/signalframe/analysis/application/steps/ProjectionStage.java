@@ -1,8 +1,11 @@
 package com.signalframe.analysis.application.steps;
 
 import com.signalframe.ai.application.AnalysisResultValidator;
+import com.signalframe.analysis.application.strategies.DomainStrategyResolver;
+import com.signalframe.analysis.domain.DomainAnalysisStrategy;
 import com.signalframe.contract.JobStatus;
 import com.signalframe.shared.JsonCodec;
+import java.util.List;
 import org.springframework.stereotype.Component;
 
 /**
@@ -24,18 +27,18 @@ public class ProjectionStage implements ProtocolStage {
   private final AnalysisResultValidator gateA;
   private final JsonCodec json;
   private final ConfidenceRubric rubric;
-  private final StrategySelector strategies;
+  private final List<DomainAnalysisStrategy> strategies;
 
   public ProjectionStage(
     AnalysisResultValidator gateA,
     JsonCodec json,
     ConfidenceRubric rubric,
-    StrategySelector strategies
+    List<DomainAnalysisStrategy> strategies
   ) {
     this.gateA = gateA;
     this.json = json;
     this.rubric = rubric;
-    this.strategies = strategies;
+    this.strategies = List.copyOf(strategies);
   }
 
   @Override
@@ -57,13 +60,13 @@ public class ProjectionStage implements ProtocolStage {
       StageFailure.Kind.VALIDATION_FAILED,
       "Gate D: the stored confidence does not match a deterministic recomputation (CF-03/CF-08)"
     );
-    var strategy = strategies.select(in.domain());
+    var strategy = DomainStrategyResolver.resolve(in.domain(), strategies);
     var projected = SnapshotProjection.project(
       in,
       score,
       inputs,
       rubric,
-      strategies.idOf(strategy)
+      DomainStrategyResolver.idOf(strategy)
     );
     try {
       var validated = gateA.parse(json.write(projected), in.news());

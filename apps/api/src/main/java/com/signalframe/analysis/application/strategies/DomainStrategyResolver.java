@@ -74,6 +74,21 @@ public final class DomainStrategyResolver {
   }
 
   /**
+   * The strategy id recorded in the snapshot's provenance (PR-16).
+   *
+   * <p>It is an <em>identifier</em>, never a selection input: selection is decided by {@code
+   * specificity()} alone (DS-04), so a class name can never change which strategy a domain
+   * resolves to. The frozen v0.1.1 interface carries no id field, so the id is derived from the
+   * strategy's own published domain plus its class name and is stable for a given build.
+   */
+  public static String idOf(DomainAnalysisStrategy strategy) {
+    if (strategy == null) throw new IllegalArgumentException(
+      "strategy must not be null"
+    );
+    return strategy.spec().domain().name() + "/" + strategy.getClass().getSimpleName();
+  }
+
+  /**
    * Startup validation (DS-02, DS-03, DS-04): exactly one fallback with specificity 0 that supports
    * every domain, every other strategy at specificity 1 or higher, and no duplicate top
    * specificity in any domain.
