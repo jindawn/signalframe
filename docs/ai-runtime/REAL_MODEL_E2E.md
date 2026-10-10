@@ -395,3 +395,44 @@ Sizing guidance, in the order that avoids waste:
    OpenAI-compatible request that this runtime sends, and no per-model special
    casing belongs in the adapter.
 
+## 8. Metered single-call runs
+
+A provider that charges per request is rehearsed and run single-shot, so the cost
+of one analysis is knowable before it is spent:
+
+```sh
+AI_RETRY_MAX_ATTEMPTS=1        # one transport attempt, no retry
+AI_RETRY_MAX_REPAIR_ATTEMPTS=0 # no schema-repair round
+AI_FAST_MAX_TOKENS=16384       # completion ceiling for this run
+AI_FAST_TIMEOUT=120            # per-call bound, the contract's maximum
+```
+
+One analysis then issues **exactly one** provider request. That is not a
+configuration hope: `SingleCallRehearsalIntegrationTest` binds these properties
+through the real Spring wiring, reads the effective policy back off the service,
+drives the real API end to end against a local stub, and asserts one request for a
+success and for each failure mode. The same check was run in the real process — a
+dead endpoint with the knobs set produced exactly one audited attempt.
+
+**Budget of that single call.** For the reference fixture the prompt is ~20.9 k
+characters ≈ 5 k tokens, so the ceiling bounds the call at roughly
+`5 k input + 16 384 output ≈ 21.4 k tokens`. Input is auditable afterwards
+(`ModelRun.inputTokens`); the completion is bounded by `max-tokens`, and its split
+between reasoning and JSON is not persisted. Cost stays `UNKNOWN` because no
+provider reports pricing — do not infer it.
+
+**Timeout risk.** Raising `max-tokens` does not extend the bound, and 120 s is the
+`ModelProfile` contract maximum. Filling a 16 384-token ceiling inside 120 s needs
+~136 output tokens/s sustained including reasoning; a slower model or a long
+reasoning trace turns a truncation into a `TIMEOUT` instead. The bound has to
+cover the whole generation, so a large ceiling and a short bound are in tension —
+decide which failure is cheaper for the run.
+
+**Reading an empty completion.** The audit row keeps only `errorType`, so the job
+error carries the redacted cause. `PROVIDER_RESPONSE_INVALID` plus
+`finish_reason=LENGTH` means the provider stopped at the ceiling before any
+content (raise the ceiling or reduce reasoning); `finish_reason=CONTENT_FILTER`
+means it was refused; `finish_reason=UNKNOWN` means no reason was reported;
+"could not be decoded" means the body arrived but the client could not read it,
+which is not an empty answer. Reasoning text and the raw response are never
+recorded.

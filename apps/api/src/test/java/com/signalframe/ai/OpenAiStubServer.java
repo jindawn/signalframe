@@ -76,6 +76,18 @@ final class OpenAiStubServer implements AutoCloseable {
     return null;
   }
 
+  /**
+   * Forgets every recorded request. A stub shared by several tests in one class
+   * would otherwise report a cumulative request count, and "exactly one request
+   * per analysis" is precisely what such a test has to measure.
+   */
+  void clear() {
+    bodies.clear();
+    paths.clear();
+    authorizations.clear();
+    headerMaps.clear();
+  }
+
   static String completion(
     String content,
     int promptTokens,
@@ -180,6 +192,55 @@ final class OpenAiStubServer implements AutoCloseable {
       "},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":5," +
       "\"completion_tokens\":5,\"total_tokens\":10}}"
     );
+  }
+
+  /**
+   * An empty completion with a stated finish reason, and reasoning text that must
+   * never be mistaken for the answer nor echoed into a log or an audit row.
+   *
+   * @param finishReason the reason to report, or null to omit the field entirely
+   *                     (which the runtime must report as UNKNOWN rather than guess)
+   */
+  static String emptyContentCompletion(
+    String reasoning,
+    String finishReason,
+    int promptTokens,
+    int completionTokens
+  ) {
+    var choice = new StringBuilder(
+      "{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"\""
+    );
+    if (reasoning != null) choice
+      .append(",\"reasoning_content\":")
+      .append(AiTestFixtures.quote(reasoning));
+    choice.append("}");
+    if (finishReason != null) choice
+      .append(",\"finish_reason\":")
+      .append(AiTestFixtures.quote(finishReason));
+    choice.append("}");
+    return (
+      "{\"id\":\"chatcmpl-stub\",\"object\":\"chat.completion\",\"created\":1," +
+      "\"model\":\"stub\",\"choices\":[" +
+      choice +
+      "],\"usage\":{\"prompt_tokens\":" +
+      promptTokens +
+      ",\"completion_tokens\":" +
+      completionTokens +
+      ",\"total_tokens\":" +
+      (promptTokens + completionTokens) +
+      ",\"completion_tokens_details\":{\"reasoning_tokens\":" +
+      completionTokens +
+      "}}}"
+    );
+  }
+
+  /**
+   * A 200 response whose body cannot be decoded into a completion. The runtime
+   * must report this as an undecodable body, never as "the model returned
+   * nothing": the model may well have answered.
+   */
+  static String undecodableCompletion() {
+    return "{\"id\":\"chatcmpl-stub\",\"object\":\"chat.completion\"}";
   }
 
   static String error(int status, String message) {

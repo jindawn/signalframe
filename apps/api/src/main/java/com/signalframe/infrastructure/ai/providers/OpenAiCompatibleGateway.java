@@ -5,6 +5,7 @@ import com.signalframe.contract.ModelProfile;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -14,6 +15,8 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
@@ -42,6 +45,10 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class OpenAiCompatibleGateway implements ModelProviderAdapter {
+
+  private static final Logger log = LoggerFactory.getLogger(
+    OpenAiCompatibleGateway.class
+  );
 
   static final String PROVIDER = "openai-compatible";
 
@@ -178,20 +185,52 @@ public class OpenAiCompatibleGateway implements ModelProviderAdapter {
     return OpenAiChatModel.builder().options(options.build()).build();
   }
 
+  /**
+   * Recognized finish reasons, in the normalized upper-case form Spring AI
+   * reports them in, plus the UNKNOWN label for anything else.
+   *
+   * <p>The wire value is lower case ({@code length}); the runtime normalizes it
+   * before this adapter sees it, so matching is done on the normalized token and
+   * the token is what the diagnosis reports.
+   */
+  static final String FINISH_STOP = "STOP";
+
+  static final String FINISH_LENGTH = "LENGTH";
+
+  static final String FINISH_CONTENT_FILTER = "CONTENT_FILTER";
+
+  static final String FINISH_TOOL_CALLS = "TOOL_CALLS";
+
+  /** Reported when the provider does not state a finish reason at all. */
+  static final String FINISH_UNKNOWN = "UNKNOWN";
+
   private static ModelResponse toResponse(
     ChatResponse response,
     ModelProfile profile,
     ModelCredentials credentials
   ) {
     var result = response.getResult();
+    var finishReason = finishReason(result);
     String text = result == null || result.getOutput() == null
       ? null
       : result.getOutput().getText();
     if (text == null || text.isBlank()) throw ModelInvocationException.of(
       ModelFailure.PROVIDER_RESPONSE_INVALID,
-      "Provider returned an empty completion",
+      emptyCompletion(finishReason),
       credentials
     );
+    if (!FINISH_STOP.equals(finishReason) && !FINISH_TOOL_CALLS.equals(finishReason)) {
+      // A body did arrive, so this is not a rejection: the validator still has to
+      // see it. Logging the reason is what distinguishes "the model finished
+      // normally" from "the reply was cut off at the ceiling", which otherwise
+      // surfaces only as a confusing schema failure.
+      log.warn(
+        "Provider finished without a normal stop: finishReason={} contentChars={} model={}",
+        finishReason,
+        text.length(),
+        profile.model()
+      );
+    }
     var usage = response.getMetadata() == null
       ? null
       : response.getMetadata().getUsage();
@@ -201,6 +240,58 @@ public class OpenAiCompatibleGateway implements ModelProviderAdapter {
       PROVIDER,
       profile.model()
     );
+  }
+
+  /**
+   * The provider's finish reason, normalized to upper case, or
+   * {@link #FINISH_UNKNOWN} when the runtime reports none.
+   *
+   * <p>An absent value is reported as UNKNOWN rather than guessed: a missing
+   * finish reason is not evidence that the model stopped normally. Note that a
+   * provider which omits the field entirely does not reach this method at all —
+   * the client refuses to decode such a body — so UNKNOWN covers the case where a
+   * reason is present but blank.
+   */
+  private static String finishReason(
+    org.springframework.ai.chat.model.Generation generation
+  ) {
+    if (generation == null) return FINISH_UNKNOWN;
+    var metadata = generation.getMetadata();
+    if (metadata == null) return FINISH_UNKNOWN;
+    var reason = metadata.getFinishReason();
+    return reason == null || reason.isBlank()
+      ? FINISH_UNKNOWN
+      : reason.trim().toUpperCase(Locale.ROOT);
+  }
+
+  /**
+   * Why an empty completion came back, told apart by the finish reason.
+   *
+   * <p>An empty completion has several causes that need different fixes, and the
+   * audit row records only the classification, so the reason travels in the
+   * detail: {@code LENGTH} means the provider stopped at the ceiling before any
+   * content (the classic reasoning-model case, fixed by a larger completion
+   * budget or less reasoning), {@code CONTENT_FILTER} means it was refused, and
+   * UNKNOWN means the runtime stated no reason. The message carries no content and
+   * no reasoning text, only the reason and whether anything arrived.
+   */
+  public static String emptyCompletion(String finishReason) {
+    var reason = finishReason == null || finishReason.isBlank()
+      ? FINISH_UNKNOWN
+      : finishReason.trim().toUpperCase(Locale.ROOT);
+    return switch (reason) {
+      case FINISH_LENGTH -> "Provider returned an empty completion truncated at the completion ceiling "
+        + "(finish_reason=LENGTH, content=empty): raise max-tokens, or reduce the reasoning the model spends before it emits content.";
+      case FINISH_CONTENT_FILTER -> "Provider returned an empty completion because the request was filtered "
+        + "(finish_reason=CONTENT_FILTER, content=empty).";
+      case FINISH_STOP -> "Provider returned an empty completion while reporting a normal stop "
+        + "(finish_reason=STOP, content=empty): the model produced no answer.";
+      case FINISH_UNKNOWN -> "Provider returned an empty completion and stated no finish reason "
+        + "(finish_reason=UNKNOWN, content=empty).";
+      default -> "Provider returned an empty completion (finish_reason=" +
+      reason +
+      ", content=empty).";
+    };
   }
 
   /**

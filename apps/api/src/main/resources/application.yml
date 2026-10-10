@@ -37,6 +37,15 @@ ai:
     user-agent: ${AI_CLIENT_USER_AGENT:SignalFrame/0.1.0}
     session-header-name: ${AI_SESSION_HEADER_NAME:x-opencode-session}
     session-header-enabled: ${AI_SESSION_HEADER_ENABLED:true}
+  # How many provider requests one analysis may issue. max-attempts counts
+  # transport attempts per round; max-repair-attempts counts the extra round a
+  # schema/provenance failure is allowed. Setting max-attempts=1 and
+  # max-repair-attempts=0 makes a run single-shot: exactly one provider request,
+  # which is what a metered endpoint is rehearsed with.
+  retry:
+    max-attempts: ${AI_RETRY_MAX_ATTEMPTS:2}
+    max-repair-attempts: ${AI_RETRY_MAX_REPAIR_ATTEMPTS:1}
+    backoff-ms: ${AI_RETRY_BACKOFF_MS:250}
   routes:
     FAST_ANALYSIS: analysis.fast
     DEEP_ANALYSIS: analysis.deep
@@ -57,8 +66,16 @@ ai:
       # reasoning model plus a verbose real snapshot: the reply would be cut off
       # mid-object and rejected as schema-invalid. The reply and its reasoning
       # must both fit, which is what SynthesisBudgetTest pins.
-      max-tokens: 8192
-      timeout: 45
+      #
+      # Configurable per deployment: AI_FAST_MAX_TOKENS (default 8192, the
+      # compatible value). Raising it widens the completion budget but does not
+      # extend `timeout`, so a much larger ceiling can turn a truncation into a
+      # timeout.
+      max-tokens: ${AI_FAST_MAX_TOKENS:8192}
+      # Per-call bound in seconds, hard-capped at 120 by the ModelProfile
+      # contract. AI_FAST_TIMEOUT overrides it; a reasoning model generating up to
+      # max-tokens needs the bound to cover the whole generation.
+      timeout: ${AI_FAST_TIMEOUT:45}
       structured-output: true
       tool-calling: false
       enabled: true

@@ -52,11 +52,38 @@ final class ProviderFailures {
         (type.isPresent() ? " (" + type.get() + ")" : "")
       );
     }
+    if (isUndecodableBody(error)) {
+      // Named explicitly so this can never be read as "the model returned
+      // nothing": an undecodable body means the model may well have answered and
+      // the client could not read it, which is a different fix.
+      return (
+        "response body could not be decoded: " +
+        error.getClass().getSimpleName() +
+        (error.getMessage() == null || error.getMessage().isBlank()
+          ? ""
+          : ": " + error.getMessage())
+      );
+    }
     String message = error.getMessage();
     String name = error.getClass().getSimpleName();
     return message == null || message.isBlank()
       ? name
       : name + ": " + message;
+  }
+
+  /**
+   * Whether the body arrived but could not be turned into a completion. The
+   * OpenAI SDK reports this as an invalid-data exception, and a Jackson failure
+   * anywhere in the chain means the same thing.
+   */
+  private static boolean isUndecodableBody(Throwable error) {
+    for (var current = error; current != null; current = next(current)) {
+      if (
+        current.getClass().getSimpleName().contains("InvalidData") ||
+        current instanceof tools.jackson.core.JacksonException
+      ) return true;
+    }
+    return false;
   }
 
   private static ModelFailure fromStatus(int status) {
