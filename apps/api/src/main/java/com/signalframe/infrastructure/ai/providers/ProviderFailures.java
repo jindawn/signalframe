@@ -62,6 +62,7 @@ final class ProviderFailures {
   private static ModelFailure fromStatus(int status) {
     return switch (status) {
       case 401 -> ModelFailure.AUTHENTICATION;
+      case 402 -> ModelFailure.QUOTA_EXCEEDED;
       case 403 -> ModelFailure.PERMISSION_DENIED;
       case 404 -> ModelFailure.MODEL_NOT_FOUND;
       case 408 -> ModelFailure.TIMEOUT;

@@ -330,6 +330,7 @@ public class ModelAnalysisService {
       failure.code(),
       switch (failure.failure()) {
         case AUTHENTICATION, PERMISSION_DENIED -> "模型凭据无效或缺失，请检查配置。";
+        case QUOTA_EXCEEDED -> "模型账户额度不足，请检查服务商计费与配额。";
         case CONFIGURATION, CAPABILITY -> "模型配置不可用，请检查 Profile 设置。";
         case TIMEOUT -> "模型调用超时，请稍后重试。";
         case RATE_LIMITED, PROVIDER_UNAVAILABLE, TRANSPORT -> "模型服务暂时不可用，请稍后重试。";
