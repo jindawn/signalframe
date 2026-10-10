@@ -4,6 +4,7 @@ import com.signalframe.analysis.application.steps.ProtocolModel.*;
 import com.signalframe.contract.AnalysisResult;
 import com.signalframe.contract.SourceRef;
 import com.signalframe.shared.JsonCodec;
+import com.signalframe.shared.confidence.FalsificationConditionText;
 import java.util.*;
 
 /**
@@ -94,7 +95,7 @@ final class SnapshotEnvelope {
           f.statement(),
           blank(f.reasoning(), "Reported source claim."),
           f.sourceRefs(),
-          ProofStatus.REPORTED
+          proofStatus(f.verificationStatus())
         )
       );
     }
@@ -108,14 +109,14 @@ final class SnapshotEnvelope {
         new Variable(
           v.id(),
           v.name(),
-          "UNKNOWN",
-          "UNKNOWN",
+          blank(v.previousState(), UNKNOWN_STATE),
+          blank(v.currentState(), UNKNOWN_STATE),
           parseDirection(v.direction()),
-          "UNKNOWN",
-          blank(v.reasoning(), "UNKNOWN"),
+          blank(v.magnitude(), UNKNOWN_STATE),
+          blank(v.whyItMatters(), UNKNOWN_STATE),
           v.statement(),
           v.reasoning(),
-          factRefsFor(v.sourceRefs(), facts),
+          declaredFactRefs(v.factRefs(), facts),
           v.sourceRefs(),
           v.confidence()
         )
@@ -132,11 +133,11 @@ final class SnapshotEnvelope {
           m.id(),
           m.cause(),
           m.effect(),
-          SupportLevel.SPECULATIVE,
+          supportLevel(m.supportLevel()),
           blank(m.statement(), "UNKNOWN"),
           m.reasoning(),
           List.of(),
-          factRefsFor(m.sourceRefs(), facts),
+          declaredOrSpanFactRefs(m.factRefs(), m.sourceRefs(), facts),
           m.sourceRefs(),
           "UNKNOWN",
           m.confidence()
@@ -309,9 +310,9 @@ final class SnapshotEnvelope {
         new FalsificationCondition(
           UUID.randomUUID(),
           target.get(),
-          blank(s.statement(), "UNKNOWN"),
-          NOT_DECLARED,
-          NOT_DECLARED,
+          blank(FalsificationConditionText.parts(s).get(FalsificationConditionText.OBSERVABLE), s.statement()),
+          blank(FalsificationConditionText.parts(s).get(FalsificationConditionText.COMPARISON), NOT_DECLARED),
+          blank(FalsificationConditionText.parts(s).get(FalsificationConditionText.DECISION_BOUNDARY), NOT_DECLARED),
           s.statement()
         )
       );
@@ -328,14 +329,51 @@ final class SnapshotEnvelope {
         new Signal(
           UUID.randomUUID(),
           s.statement(),
-          NOT_DECLARED,
+          blank(s.whereToCheck(), NOT_DECLARED),
           target.get(),
-          NOT_DECLARED,
+          blank(s.window(), NOT_DECLARED),
           SignalStatus.NOT_OBSERVED
         )
       );
     }
     return List.copyOf(list);
+  }
+
+  /**
+   * The snapshot's own predictions, mapped into the stage vocabulary.
+   *
+   * <p>The contract carries them (SCH-07); the earlier behaviour of returning an
+   * empty list with an "SCH-07 pending" note was stale and silently discarded a
+   * protocol artifact the model had produced.
+   */
+  List<Prediction> predictions() {
+    var list = new ArrayList<Prediction>();
+    for (var p : ProtocolModel.orEmpty(result.predictions())) {
+      list.add(
+        new Prediction(
+          p.id(),
+          p.hypothesisId(),
+          p.statement(),
+          p.observable(),
+          p.expectedBy(),
+          p.verificationCriteria(),
+          p.whereToCheck(),
+          predictionStatus(p.status()),
+          ProtocolModel.orEmpty(p.basisFactRefs())
+        )
+      );
+    }
+    return List.copyOf(list);
+  }
+
+  /** The declared prediction status, or OPEN when it is absent or unrecognized. */
+  static PredictionStatus predictionStatus(String declared) {
+    if (declared == null || declared.isBlank()) return PredictionStatus.OPEN;
+    try {
+      return PredictionStatus.valueOf(declared.trim().toUpperCase(java.util.Locale.ROOT));
+    } catch (IllegalArgumentException unrecognized) {
+      return PredictionStatus.OPEN;
+    }
   }
 
   List<PlanItem> plan(
@@ -349,14 +387,14 @@ final class SnapshotEnvelope {
       list.add(
         new PlanItem(
           i.id(),
-          blank(i.name(), "UNKNOWN"),
-          blank(i.measurement(), "UNKNOWN"),
-          NOT_DECLARED,
-          NOT_DECLARED,
-          PlanPriority.UNKNOWN,
-          null,
-          target.orElse(null),
-          predictions.isEmpty() ? null : predictions.getFirst().id(),
+          blank(i.name(), blank(i.statement(), "UNKNOWN")),
+          blank(i.whereToCheck(), blank(i.measurement(), NOT_DECLARED)),
+          blank(i.supportingResult(), NOT_DECLARED),
+          blank(i.contradictingResult(), NOT_DECLARED),
+          planPriority(i.priority()),
+          i.deadline(),
+          hypothesisFor(i, predictions).orElse(target.orElse(null)),
+          i.predictionId(),
           i.statement(),
           i.reasoning(),
           i.sourceRefs(),
@@ -368,6 +406,85 @@ final class SnapshotEnvelope {
   }
 
   // ---- deterministic helpers --------------------------------------------
+
+  /**
+   * The declared fact ids, filtered to the facts this snapshot actually holds.
+   *
+   * <p>A declared reference is the model's own statement of its basis, so it is
+   * preferred over the span-derived one. It is filtered rather than trusted: a ref
+   * to a fact that is not in this snapshot can neither be invented nor resolved, so
+   * it is dropped (the reader rejects dangling refs) and the span derivation is used
+   * as the fallback. Nothing is promoted and nothing is fabricated.
+   */
+  static List<UUID> declaredFactRefs(List<UUID> declared, List<Fact> facts) {
+    if (declared == null || declared.isEmpty()) return List.of();
+    var known = new LinkedHashSet<UUID>();
+    for (var fact : facts) known.add(fact.id());
+    var resolved = new ArrayList<UUID>();
+    for (var id : declared) if (id != null && known.contains(id)) resolved.add(id);
+    return List.copyOf(resolved);
+  }
+
+  /** A declared fact basis, or the span-derived one when nothing resolves. */
+  static List<UUID> declaredOrSpanFactRefs(
+    List<UUID> declared,
+    List<SourceRef> refs,
+    List<Fact> facts
+  ) {
+    var resolved = declaredFactRefs(declared, facts);
+    return resolved.isEmpty() ? factRefsFor(refs, facts) : resolved;
+  }
+
+  /** The declared proof status, or REPORTED when it is absent or unrecognized. */
+  static ProofStatus proofStatus(String declared) {
+    if (declared == null || declared.isBlank()) return ProofStatus.REPORTED;
+    try {
+      return ProofStatus.valueOf(declared.trim().toUpperCase(java.util.Locale.ROOT));
+    } catch (IllegalArgumentException unrecognized) {
+      return ProofStatus.REPORTED;
+    }
+  }
+
+  /** The declared support level, or SPECULATIVE when it is absent or unrecognized. */
+  static SupportLevel supportLevel(String declared) {
+    if (declared == null || declared.isBlank()) return SupportLevel.SPECULATIVE;
+    try {
+      return SupportLevel.valueOf(declared.trim().toUpperCase(java.util.Locale.ROOT));
+    } catch (IllegalArgumentException unrecognized) {
+      return SupportLevel.SPECULATIVE;
+    }
+  }
+
+  /** The declared plan priority, or UNKNOWN when it is absent or unrecognized. */
+  static PlanPriority planPriority(String declared) {
+    if (declared == null || declared.isBlank()) return PlanPriority.UNKNOWN;
+    try {
+      return PlanPriority.valueOf(declared.trim().toUpperCase(java.util.Locale.ROOT));
+    } catch (IllegalArgumentException unrecognized) {
+      return PlanPriority.UNKNOWN;
+    }
+  }
+
+  /**
+   * The hypothesis a plan item serves, taken from the prediction it is attached to.
+   *
+   * <p>The generated {@code Indicator} carries {@code predictionId} but no
+   * {@code hypothesisRef} (see the contract gap in the validation report), so the
+   * link is followed through the prediction rather than guessed.
+   */
+  static Optional<UUID> hypothesisFor(
+    com.signalframe.contract.Indicator indicator,
+    List<Prediction> predictions
+  ) {
+    if (indicator.predictionId() == null) return Optional.empty();
+    return predictions
+      .stream()
+      .filter(p -> indicator.predictionId().equals(p.hypothesisRef()))
+      .map(Prediction::hypothesisRef)
+      .findFirst();
+  }
+
+  private static final String UNKNOWN_STATE = "UNKNOWN";
 
   /**
    * Resolves the snapshot's fact ids for a span list by exact-span overlap. This

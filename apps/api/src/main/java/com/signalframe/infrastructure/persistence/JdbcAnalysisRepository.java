@@ -67,6 +67,22 @@ public class JdbcAnalysisRepository implements AnalysisRepository {
         Timestamp.from(e.createdAt())
       );
     }
+    // The snapshot's own predictions are persisted before the indicators that
+    // reference them: `indicators.prediction_id` is a foreign key to `predictions`,
+    // and the V1/V2/V4 schema already carries the row shape, so a dated OPEN
+    // prediction from an analysis belongs there. Without this an indicator attached
+    // to a prediction could not be stored at all, which silently dropped the whole
+    // verification plan of a compliant snapshot.
+    for (var p : a.result().predictions()) {
+      db.update(
+        "INSERT INTO predictions(id,hypothesis_id,expected_by,status,payload) VALUES(?,?,?,?,?::jsonb)",
+        p.id(),
+        p.hypothesisId(),
+        Timestamp.from(p.expectedBy()),
+        p.status(),
+        json.write(p)
+      );
+    }
     for (var i : a.result().verificationIndicators())
       db.update(
         "INSERT INTO indicators VALUES(?,?,?,?::jsonb)",

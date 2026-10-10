@@ -96,11 +96,58 @@ public class StageResponseReader {
     if (envelope.present()) return mechanismsEnvelope(envelope.get(), state);
     var snapshot = snapshot(raw);
     if (snapshot.isPresent()) {
-      return new Artifacts<>(
-        strictMechanisms(snapshot.get().mechanisms(state.facts()), state),
-        snapshot.get().unknowns(),
-        snapshot.get().demo()
+      var unknown = new ArrayList<>(snapshot.get().unknowns());
+      var kept = new ArrayList<Mechanism>();
+      for (var m : snapshot.get().mechanisms(state.facts())) {
+        // A declared level is only honoured when the mechanism can carry it. STG-05
+        // requires a fact basis for SUPPORTED and PLAUSIBLE, and the generated
+        // CausalLink cannot carry assumptions or a corroborating signal (see the
+        // contract gap in the validation report), so a level that cannot be
+        // supported here is demoted and the demotion is stated, never silent.
+        var unsupportedLevel =
+          (m.supportLevel() == SupportLevel.SUPPORTED ||
+            m.supportLevel() == SupportLevel.PLAUSIBLE) &&
+          m.factRefs().isEmpty();
+        if (unsupportedLevel) {
+          unknown.add(
+            new Unknown(
+              UUID.randomUUID(),
+              "A declared mechanism was demoted because it named no fact support",
+              "STG-05 requires a fact reference for " +
+              m.supportLevel() +
+              ", and this mechanism declares none",
+              "a mechanism whose factRefs resolve inside the snapshot"
+            )
+          );
+          kept.add(
+            new Mechanism(
+              m.id(),
+              m.from(),
+              m.to(),
+              SupportLevel.SPECULATIVE,
+              m.explanation(),
+              m.reasoning(),
+              m.assumptions(),
+              m.factRefs(),
+              m.sourceRefs(),
+              m.corroboratingSignal(),
+              m.confidence()
+            )
+          );
+          continue;
+        }
+        kept.add(m);
+      }
+      var strict = strictMechanisms(kept, state);
+      if (strict.size() < kept.size()) unknown.add(
+        new Unknown(
+          UUID.randomUUID(),
+          "A speculative mechanism was not carried into the snapshot",
+          "STG-05 requires a corroborating signal for a SPECULATIVE link, and the generated CausalLink has no field for one",
+          "a mechanism at a support level the contract can express with its support fields"
+        )
       );
+      return new Artifacts<>(strict, unknown, snapshot.get().demo());
     }
     throw wrongShape(raw, "mechanisms");
   }
@@ -348,7 +395,17 @@ public class StageResponseReader {
     if (snapshot.isPresent()) {
       var values = snapshot.get().falsificationConditions(state.hypotheses());
       var unknown = new ArrayList<>(snapshot.get().unknowns());
-      if (!values.isEmpty()) unknown.add(
+      // Only note the gap when the parts really are absent: a producer that renders
+      // observable/comparison/decisionBoundary into the condition's reasoning
+      // trailer (the documented representation) must not be told it omitted them.
+      boolean missingParts = values
+        .stream()
+        .anyMatch(c ->
+          SnapshotEnvelope.NOT_DECLARED.equals(c.observable()) ||
+          SnapshotEnvelope.NOT_DECLARED.equals(c.comparison()) ||
+          SnapshotEnvelope.NOT_DECLARED.equals(c.decisionBoundary())
+        );
+      if (missingParts) unknown.add(
         new Unknown(
           UUID.randomUUID(),
           "The v0.1 snapshot states falsification conditions without a comparison or decision boundary (SCH-06 pending)",
@@ -424,15 +481,25 @@ public class StageResponseReader {
     var snapshot = snapshot(raw);
     if (snapshot.isPresent()) {
       var unknown = new ArrayList<>(snapshot.get().unknowns());
-      unknown.add(
-        new Unknown(
-          UUID.randomUUID(),
-          "Predictions are not part of the v0.1 snapshot schema (SCH-07 pending)",
-          "the contract cannot carry a PREDICTION artifact, so no dated prediction can be persisted",
-          "the v0.2 snapshot schema with predictions"
-        )
-      );
-      return new Artifacts<>(List.of(), unknown, snapshot.get().demo());
+      var kept = new ArrayList<Prediction>();
+      for (var p : snapshot.get().predictions()) {
+        var problem = predictionProblem(p, state);
+        if (problem.isPresent()) {
+          // A prediction the protocol cannot accept is dropped *visibly*: never
+          // silently, and never rewritten into something that would pass.
+          unknown.add(
+            new Unknown(
+              UUID.randomUUID(),
+              "A declared prediction was not carried into the snapshot",
+              problem.get(),
+              "a prediction with a resolvable hypothesis, a future expectedBy, an observable, a venue and verification criteria"
+            )
+          );
+          continue;
+        }
+        kept.add(p);
+      }
+      return new Artifacts<>(List.copyOf(kept), unknown, snapshot.get().demo());
     }
     throw wrongShape(raw, "predictions");
   }
@@ -480,18 +547,115 @@ public class StageResponseReader {
     var snapshot = snapshot(raw);
     if (snapshot.isPresent()) {
       var unknown = new ArrayList<>(snapshot.get().unknowns());
-      var delivered = snapshot.get().plan(state.facts(), state.hypotheses(), state.predictions());
-      if (!delivered.isEmpty()) unknown.add(
-        new Unknown(
-          UUID.randomUUID(),
-          "The v0.1 snapshot's indicators cannot serve as verification plan items (SCH-08 pending)",
-          "an indicator carries no distinguishable supporting/contradicting result and no deadline",
-          "plan items with supportingResult, contradictingResult and deadline"
-        )
-      );
-      return new Artifacts<>(List.of(), unknown, snapshot.get().demo());
+      var kept = new ArrayList<PlanItem>();
+      for (var item : snapshot
+        .get()
+        .plan(state.facts(), state.hypotheses(), state.predictions())) {
+        var problem = planItemProblem(item, state);
+        if (problem.isPresent()) {
+          unknown.add(
+            new Unknown(
+              UUID.randomUUID(),
+              "A declared verification plan item was not carried into the snapshot",
+              problem.get(),
+              "a plan item with a distinguishable supporting and contradicting result, a deadline, a checkable venue and a hypothesis or prediction it serves"
+            )
+          );
+          continue;
+        }
+        kept.add(item);
+      }
+      return new Artifacts<>(List.copyOf(kept), unknown, snapshot.get().demo());
     }
     throw wrongShape(raw, "plan");
+  }
+
+  // ---- one rule set per artifact -----------------------------------------
+  //
+  // A stage envelope is strict: a model answering a stage prompt must comply, so a
+  // violation fails the stage. A snapshot is the reference-fixture path and is
+  // deliberately lenient: an item the protocol cannot accept is dropped *with an
+  // explicit UNKNOWN* naming the reason, so nothing is lost silently and nothing is
+  // rewritten into something that would pass.
+
+  /** Empty when the prediction satisfies STG-14, otherwise the reason it does not. */
+  private Optional<String> predictionProblem(Prediction p, PipelineState state) {
+    if (!hasText(p.statement())) return Optional.of(
+      "predictions[]: statement is required"
+    );
+    if (!hasText(p.observable())) return Optional.of(
+      "predictions[]: observable is required (STG-14)"
+    );
+    if (!hasText(p.verificationCriteria())) return Optional.of(
+      "predictions[]: verificationCriteria is required (STG-14.2)"
+    );
+    if (!hasText(p.whereToCheck())) return Optional.of(
+      "predictions[]: whereToCheck is required (STG-14.3)"
+    );
+    if (p.expectedBy() == null) return Optional.of(
+      "predictions[]: expectedBy is required; a prediction must be time bounded (STG-14)"
+    );
+    if (!p.expectedBy().isAfter(state.snapshotCreatedAt())) return Optional.of(
+      "predictions[]: expectedBy must be in the future relative to snapshot creation (STG-14.1)"
+    );
+    if (p.verificationCriteria().equalsIgnoreCase(p.statement().trim())) {
+      return Optional.of(
+        "predictions[]: verificationCriteria must separate confirmation, partial confirmation and rejection (STG-14.2)"
+      );
+    }
+    if (state.hypotheses().stream().noneMatch(h -> h.id().equals(p.hypothesisRef()))) {
+      return Optional.of(
+        "predictions[]: hypothesisRef does not resolve inside this snapshot (PR-09)"
+      );
+    }
+    return Optional.empty();
+  }
+
+  /** Empty when the plan item satisfies STG-15, otherwise the reason it does not. */
+  private Optional<String> planItemProblem(PlanItem p, PipelineState state) {
+    if (!hasText(p.whatToCheck())) return Optional.of(
+      "plan[]: whatToCheck is required"
+    );
+    if (!hasText(p.whereToCheck())) return Optional.of(
+      "plan[]: whereToCheck is required"
+    );
+    if (!hasText(p.supportingResult())) return Optional.of(
+      "plan[]: supportingResult is required (STG-15.2)"
+    );
+    if (!hasText(p.contradictingResult())) return Optional.of(
+      "plan[]: contradictingResult is required (STG-15.2)"
+    );
+    if (p.supportingResult().equals(p.contradictingResult())) return Optional.of(
+      "plan[]: supportingResult and contradictingResult must be distinguishable in advance (STG-15.2)"
+    );
+    if (p.deadline() == null) return Optional.of(
+      "plan[]: a verification plan item needs a deadline (STG-15)"
+    );
+    if (genericVenue(p.whereToCheck())) return Optional.of(
+      "plan[]: whereToCheck must name a checkable venue or dataset (STG-15.3)"
+    );
+    if (p.hypothesisRef() == null && p.predictionRef() == null) {
+      return Optional.of(
+        "plan[]: a plan item must serve a hypothesis or a prediction (STG-15)"
+      );
+    }
+    if (
+      p.hypothesisRef() != null &&
+      state.hypotheses().stream().noneMatch(h -> h.id().equals(p.hypothesisRef()))
+    ) return Optional.of(
+      "plan[]: hypothesisRef does not resolve inside this snapshot (PR-09)"
+    );
+    if (
+      p.predictionRef() != null &&
+      state.predictions().stream().noneMatch(x -> x.id().equals(p.predictionRef()))
+    ) return Optional.of(
+      "plan[]: predictionRef does not resolve inside this snapshot (PR-09)"
+    );
+    return Optional.empty();
+  }
+
+  private static boolean hasText(String value) {
+    return value != null && !value.isBlank();
   }
 
   // ---- shared validation -------------------------------------------------
