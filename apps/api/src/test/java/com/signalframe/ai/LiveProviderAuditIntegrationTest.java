@@ -217,7 +217,7 @@ class LiveProviderAuditIntegrationTest {
     String compact = payload.replace(" ", "");
     assertTrue(compact.contains("\"provider\":\"openai-compatible\""), payload);
     assertTrue(compact.contains("\"model\":\"" + LIVE_MODEL + "\""), payload);
-    assertTrue(compact.contains("\"promptVersion\":\"synthesis-v2\""), payload);
+    assertTrue(compact.contains("\"promptVersion\":\"synthesis-v3\""), payload);
     assertTrue(compact.contains("\"status\":\"SUCCEEDED\""), payload);
     assertTrue(compact.contains("\"inputTokens\":42"), payload);
     assertTrue(compact.contains("\"outputTokens\":7"), payload);

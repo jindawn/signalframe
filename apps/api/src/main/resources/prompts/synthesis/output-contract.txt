@@ -11,9 +11,10 @@ OUTPUT CONTRACT. These rules describe the reply itself and override anything tha
    - Do NOT use a markdown code fence, and add no prose, comment, heading or trailing text.
    - The first character of your reply must be { and the last character must be }.
 2. Every key listed in rule 1 must be present, even when its value is an empty array or null.
-   summary is a non-empty string. demo and modifiesExistingHypotheses are booleans. confidenceAssessment requires
-   score (integer 0-100), reason (non-empty string) and isProbability (which must be false). Each element of each
-   array must match the schema for that key.
+   summary is a non-empty string. confidenceAssessment requires score (integer 0-100), reason (non-empty string)
+   and isProbability (which must be false). demo must be false: it marks offline demo output and a live model
+   reply is never a demo. modifiesExistingHypotheses must be false: this reply states a new snapshot and does not
+   update existing hypotheses. Each element of each array must match the schema for that key.
 3. Null and empty arrays are not interchangeable. Use [] only for a stage that was evaluated and found nothing.
    Use null only for a field the schema allows to be null. If the input cannot support an artifact, emit an explicit
    UNKNOWN item under "unknowns" describing what is missing, why, and what would resolve it: never a silent [],

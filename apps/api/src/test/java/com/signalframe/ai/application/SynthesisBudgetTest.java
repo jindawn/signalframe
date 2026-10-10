@@ -38,7 +38,7 @@ class SynthesisBudgetTest {
         new ModelRequest(
           UUID.randomUUID(),
           ModelPurpose.SYNTHESIS,
-          "synthesis-v2",
+          "synthesis-v3",
           "",
           com.signalframe.ai.AiTestFixtures.news(),
           com.signalframe.ai.AiTestFixtures.profile("mock", "mock-v1"),

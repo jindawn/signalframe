@@ -113,7 +113,7 @@ class ProtocolPipelineTest {
     assertEquals(DURABLE_STEPS, outcome.jobs().steps());
     assertEquals(1, outcome.runs().all().size());
     var run = outcome.runs().all().getFirst();
-    assertEquals("synthesis-v2", run.promptVersion());
+    assertEquals("synthesis-v3", run.promptVersion());
     assertEquals(ModelPurpose.SYNTHESIS, run.purpose());
     assertEquals("SUCCEEDED", run.status());
 
@@ -169,7 +169,7 @@ class ProtocolPipelineTest {
     assertNotNull(snapshot.provenance());
     assertFalse(snapshot.provenance().domainStrategyId().isBlank());
     assertEquals(
-      List.of("synthesis-v2"),
+      List.of("synthesis-v3"),
       snapshot.provenance().promptVersions()
     );
     assertTrue(assessment.score() >= 0 && assessment.score() <= 100);
@@ -217,7 +217,7 @@ class ProtocolPipelineTest {
       versions.contains(expected),
       "missing audit row for " + expected
     );
-    assertTrue(versions.contains("synthesis-v2"));
+    assertTrue(versions.contains("synthesis-v3"));
     assertTrue(
       outcome.runs().all().stream().allMatch(r -> "SUCCEEDED".equals(r.status()))
     );

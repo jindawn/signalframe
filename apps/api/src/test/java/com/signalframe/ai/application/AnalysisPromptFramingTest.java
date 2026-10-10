@@ -63,7 +63,7 @@ class AnalysisPromptFramingTest {
   @Test
   void synthesisPromptCarriesBothHalvesUnderOneVersion() {
     var prompt = PROMPTS.synthesis();
-    assertEquals("synthesis-v2", prompt.version());
+    assertEquals("synthesis-v3", prompt.version());
     assertFalse(prompt.text().isBlank(), "instructions are required");
     assertFalse(
       prompt.outputContract().isBlank(),
@@ -170,7 +170,12 @@ class AnalysisPromptFramingTest {
       "UTF-16 code-unit offsets",
       "substring(startOffset, endOffset) equal to quote",
       "UUID string",
-      "UTC ISO-8601"
+      "UTC ISO-8601",
+      // The strict live tier asserts demo == false, and the validator refuses a
+      // true modifiesExistingHypotheses, so both values must be stated rather
+      // than left as "some boolean".
+      "demo must be false",
+      "modifiesExistingHypotheses must be false"
     )) {
       assertTrue(contract.contains(rule), "contract rule missing: " + rule);
     }

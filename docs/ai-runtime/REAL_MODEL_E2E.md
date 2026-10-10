@@ -228,7 +228,7 @@ credential value.
 Found while validating the real path; each is outside the runtime boundary of
 this task and none of them was fixed here.
 
-1. **Output framing — fixed in `synthesis-v2`.** The synthesis prompt used to
+1. **Output framing — fixed in `synthesis-v3`.** The synthesis prompt used to
    state the output contract in its first sentence, then the schema, then the
    untrusted source last. Small and mid-size models echoed the source object or
    wrapped the result in `{"analysisResult": {...}}`, because the only text
@@ -238,9 +238,12 @@ this task and none of them was fixed here.
    instructions → guidance → schema → fenced source → **output contract last**, and
    `AnalysisOutputSchema` projects the schema down to the definitions reachable
    from `AnalysisResult` (19 of 48, compact instead of pretty-printed), cutting the
-   assembled prompt by ~64% for the reference fixture. See §7 for the measured
-   sizes and the budget knob. Small models still fail, but they now fail on
-   content, not on shape.
+   assembled prompt by ~63% for the reference fixture. The contract also states the
+   values the validator and the strict tier require rather than leaving them as
+   "some boolean": `demo` must be false (it marks offline demo output) and
+   `modifiesExistingHypotheses` must be false. See §7 for the measured sizes and
+   the budget knob. Small models still fail, but they now fail on content, not on
+   shape.
 
 2. **`usage.total_tokens` is mandatory for the client.** The OpenAI Java client
    refuses to decode a `usage` object that omits `total_tokens`, so a provider
@@ -337,14 +340,14 @@ runtime:
 Measured on the reference fixture (a 461-character Chinese news item, domain
 ENERGY, 1 798 characters of strategy guidance):
 
-| section | `synthesis-v1` | `synthesis-v2` |
+| section | `synthesis-v1` | `synthesis-v3` |
 | --- | --- | --- |
 | instructions | 1 093 | 1 002 |
 | guidance | 1 798 | 1 798 |
 | schema | 53 804 (48 schemas, pretty-printed) | 13 184 (19 schemas, compact) |
 | source | 461 | 461 |
-| output contract | — | 3 715 |
-| **total** | **57 094** | **20 444 (−64%)** |
+| output contract | — | 3 873 |
+| **total** | **57 094** | **20 875 (−63%)** |
 
 `ai.prompt.warn-chars` (default `60000`) is the operator's statement of what this
 deployment expects its provider to accept. Every assembled prompt logs its section

@@ -110,7 +110,7 @@ class ModelAnalysisRetryTest {
     assertNull(saved.get(1).errorType());
     var first = saved.getFirst();
     assertEquals("corr-retry", first.correlationId());
-    assertEquals("synthesis-v2", first.promptVersion());
+    assertEquals("synthesis-v3", first.promptVersion());
     assertEquals(ModelPurpose.SYNTHESIS, first.purpose());
     assertEquals("mock", first.provider());
     assertEquals("mock-v1", first.model());
