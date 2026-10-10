@@ -1,6 +1,7 @@
 package com.signalframe.analysis.application;
 
 import com.signalframe.analysis.application.*;
+import com.signalframe.analysis.application.steps.StageFailure;
 import com.signalframe.contract.*;
 import com.signalframe.jobs.domain.*;
 import com.signalframe.news.application.NewsService;
@@ -11,6 +12,15 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
+/**
+ * Starts analysis jobs and reports their failure honestly.
+ *
+ * <p>Failures stay classified end to end: provider failure, timeout, malformed
+ * output, schema violation, missing mandatory artifact, unsupported stage result
+ * and validation failure each produce a specific operator-facing message. A
+ * failure never persists a partial snapshot, and no raw prompt, raw model output
+ * or credential reaches the job record.
+ */
 @Service
 public class AnalysisJobService {
 
@@ -54,6 +64,13 @@ public class AnalysisJobService {
         MDC.put("jobId", job.id().toString());
         try {
           pipeline.run(new PipelineContext(job.id(), correlationId, item));
+        } catch (StageFailure stageFailure) {
+          jobs.fail(job.id(), stageFailure.jobMessage());
+          log.warn(
+            "Analysis job failed at stage {}: {}",
+            stageFailure.stage(),
+            stageFailure.kind()
+          );
         } catch (Exception e) {
           jobs.fail(
             job.id(),
