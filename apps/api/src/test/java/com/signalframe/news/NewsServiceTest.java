@@ -104,9 +104,49 @@ class NewsServiceTest {
 
     assertEquals("NEEDS_TEXT", item.source().extractionStatus());
     assertEquals("", item.source().text());
-    assertTrue(item.source().message().contains("UNSAFE_DESTINATION"));
-    assertTrue(item.source().message().contains("粘贴正文"));
+    String message = item.source().message();
+    assertTrue(message.startsWith("UNSAFE_DESTINATION · "), message);
+    assertTrue(message.contains("粘贴正文"));
+    assertEquals(
+      IngestionFailure.UNSAFE_DESTINATION,
+      IngestionFailure.parseCode(message).orElseThrow(),
+      "the UI must be able to read the reason back"
+    );
     assertEquals(URL, item.source().url());
+  }
+
+  @Test
+  void failedUrlWithoutTextAlwaysCarriesAReasonCode() {
+    InMemoryRepository repository = new InMemoryRepository();
+    // A producer that supplied no message must not leave the caller without a reason.
+    StubExtractor extractor = new StubExtractor(
+      new NormalizedContent(
+        null,
+        "",
+        URL,
+        null,
+        "news.example.com",
+        null,
+        null,
+        IngestionOutcome.EXTRACTION_FAILED,
+        null,
+        "   ",
+        Map.of()
+      )
+    );
+    NewsService service = new NewsService(repository, extractor);
+
+    NewsItem item = service.create(new NewsInput(URL, null, null));
+
+    assertEquals("NEEDS_TEXT", item.source().extractionStatus());
+    assertEquals(
+      IngestionFailure.EXTRACTION_FAILED.persistedMessage(),
+      item.source().message()
+    );
+    assertEquals(
+      IngestionFailure.EXTRACTION_FAILED,
+      IngestionFailure.parseCode(item.source().message()).orElseThrow()
+    );
   }
 
   @Test
@@ -125,8 +165,14 @@ class NewsServiceTest {
 
     assertEquals("PASTED", item.source().extractionStatus());
     assertEquals("用户粘贴的正文。", item.source().text());
-    assertTrue(item.source().message().contains("ACCESS_BLOCKED"));
-    assertFalse(item.source().message().contains("Exception"));
+    String message = item.source().message();
+    assertTrue(message.startsWith("ACCESS_BLOCKED · "), message);
+    assertTrue(message.contains("已保留你粘贴的正文"));
+    assertEquals(
+      IngestionFailure.ACCESS_BLOCKED,
+      IngestionFailure.parseCode(message).orElseThrow()
+    );
+    assertFalse(message.contains("Exception"));
   }
 
   @Test

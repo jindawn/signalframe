@@ -563,6 +563,28 @@ textarea[aria-invalid="true"] {
   font-size: 0.875rem;
 }
 
+/* ---------- ingestion failure diagnostics ---------- */
+
+.diagnostic {
+  border-left: 4px solid var(--danger-line);
+  background: #fafbf8;
+  border-radius: 0 8px 8px 0;
+  padding: 10px 14px;
+  margin: 10px 0 14px;
+}
+
+.diagnostic-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 6px;
+}
+
+.diagnostic p:last-child {
+  margin-bottom: 0;
+}
+
 /* ---------- job progress ---------- */
 
 .job-panel .job-head {

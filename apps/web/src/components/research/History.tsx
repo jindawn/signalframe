@@ -3,6 +3,7 @@ import Link from "next/link";
 import { api, unwrap } from "@/lib/api";
 import { ApiError } from "../ApiError";
 import { useLoad } from "@/lib/useLoad";
+import { extractionLabel } from "@/lib/labels";
 const newsLoad = async () => unwrap(await api.GET("/api/v1/news"));
 export function History() {
   const { data, error } = useLoad(newsLoad);
@@ -19,7 +20,7 @@ export function History() {
             <strong>{n.title}</strong>
             <small>
               {new Date(n.createdAt).toLocaleString("zh-CN")} ·{" "}
-              {n.source.extractionStatus}
+              {extractionLabel[n.source.extractionStatus]}
             </small>
           </Link>
         ))}
