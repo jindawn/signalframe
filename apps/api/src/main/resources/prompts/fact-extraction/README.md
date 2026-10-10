@@ -1,2 +1,2 @@
 # fact-extraction
-Reserved prompt boundary. This stage uses deterministic scaffolding in foundation. Add version.txt and prompt.txt when implementing real model calls; record version in every ModelRun.
+Versioned prompt boundary. `version.txt` is recorded in every ModelRun and in the snapshot provenance.
