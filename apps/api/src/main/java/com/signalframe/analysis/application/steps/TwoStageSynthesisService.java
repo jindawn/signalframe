@@ -425,6 +425,69 @@ public class TwoStageSynthesisService {
     }
   }
 
+  /**
+   * Stage 1 alone.
+   *
+   * <p>Runs the fact contract and nothing else: no stage 2, no assembly, no pipeline.
+   * It exists so the fact contract can be probed against a real provider without the
+   * rest of an analysis, and it reuses the same prompt assembly, the same
+   * {@link StageModelClient}, the same retry policy and the same per-analysis call
+   * ceiling as the full path — there is no second adapter and no second code path.
+   */
+  public FactsProbe factsOnly(
+    UUID jobId,
+    String correlationId,
+    PipelineState state
+  ) {
+    var budget = new ProviderCallBudget(deps.gateway(), maxProviderCalls);
+    var client = new StageModelClient(
+      deps.router(),
+      budget,
+      deps.runs(),
+      factsPolicy
+    );
+    var prompt = factsPrompt();
+    var artifacts = client.invoke(
+      stageProfile(
+        ModelPurpose.FACT_EXTRACTION,
+        factsMaxTokensOverride,
+        factsTimeoutOverride
+      ),
+      new StageModelClient.StageCall(
+        FACTS_STAGE,
+        jobId,
+        correlationId,
+        state.news(),
+        ModelPurpose.FACT_EXTRACTION,
+        prompt.version(),
+        factsPromptText(prompt, state)
+      ),
+      raw -> validateFacts(raw, state)
+    );
+    return new FactsProbe(
+      artifacts.value(),
+      artifacts.unknowns(),
+      artifacts.demo(),
+      prompt.version(),
+      budget.used(),
+      stageProfile(
+        ModelPurpose.FACT_EXTRACTION,
+        factsMaxTokensOverride,
+        factsTimeoutOverride
+      )
+    );
+  }
+
+  /** The outcome of a stage-1-only run, for the probe report. */
+  public record FactsProbe(
+    List<ProtocolModel.Fact> facts,
+    List<ProtocolModel.Unknown> unknowns,
+    boolean demo,
+    String promptVersion,
+    int providerCalls,
+    ModelProfile profile
+  ) {}
+
   // ---- stage 1 -------------------------------------------------------------
 
   /**
