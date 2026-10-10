@@ -420,13 +420,23 @@ class JdbcEvidencePredictionRepositoryTest {
 
   // ---- helpers ----------------------------------------------------------
 
+  /**
+   * A stored analysis payload in the shape the pipeline actually writes: the whole
+   * {@code Analysis} record, with its facts nested under {@code result}
+   * ({@code JdbcAnalysisRepository} stores {@code json.write(analysis)}).
+   *
+   * <p>A flattened {@code {"facts":[...]}} payload is not a shape any writer
+   * produces, and seeding one is what hid the wrong JSON path in {@link
+   * com.signalframe.infrastructure.persistence.JdbcEvidencePredictionRepository#factIds}
+   * until the integration gate exercised a real snapshot.
+   */
   static String factsSnapshot(UUID... factIds) {
-    StringBuilder json = new StringBuilder("{\"facts\":[");
+    StringBuilder json = new StringBuilder("{\"result\":{\"facts\":[");
     for (int i = 0; i < factIds.length; i++) {
       if (i > 0) json.append(',');
       json.append("{\"id\":\"").append(factIds[i]).append("\"}");
     }
-    return json.append("]}").toString();
+    return json.append("]}}").toString();
   }
 
   Prediction openPrediction(Instant expectedBy) {

@@ -236,6 +236,13 @@ public class EvidencePredictionService {
    * attempt against an already-decided prediction is rejected with {@code 422} and the
    * port's just-applied transition rolls back with this transaction, so the prediction
    * is decided exactly once.
+   *
+   * <p>Ordering: the verification record is persisted, then the engine is notified.
+   * The port is the authority on whether a command may be applied and it requires the
+   * stored prediction to carry the outcome being asserted, so notifying it before the
+   * record exists would make every first verification unprocessable. Replay order is
+   * unaffected: the port looks its idempotency record up before it validates the
+   * reference, so a replay is answered without a second write.
    */
   @Transactional
   public PredictionVerificationResult verifyPrediction(
@@ -270,6 +277,26 @@ public class EvidencePredictionService {
       : Instant.now();
     boolean alreadyDecided = !PredictionRules.isOpen(prediction.status());
 
+    if (!alreadyDecided) {
+      // The verification record is written *before* the engine is asked to move the
+      // hypothesis, because the engine refuses to act on an assertion: TASK-06's
+      // port accepts PREDICTION_VERIFIED only when the stored prediction already
+      // carries that outcome and a verification timestamp (EPISTEMIC_TYPES §2.3,
+      // freeze §2.1 "CONFIRMED asserted with no verification record"). Recording it
+      // first is what makes the two halves agree, and it is safe because both writes
+      // run in this one transaction — if the engine then refuses the transition (a
+      // stale version, a terminal hypothesis), the record rolls back with it.
+      predictionRepository
+        .resolve(predictionId, outcome.name(), verifiedAt)
+        .orElseThrow(() ->
+          new ApplicationException(
+            409,
+            "VERSION_CONFLICT",
+            "the prediction was decided concurrently; re-read it and retry"
+          )
+        );
+    }
+
     var transition = transitions.transition(
       predictionVerifiedCommand(
         command.operationId(),
@@ -283,29 +310,20 @@ public class EvidencePredictionService {
     );
     boolean applied = Boolean.TRUE.equals(transition.applied());
 
-    if (applied) {
-      if (alreadyDecided) {
-        // A second, genuinely new verification of a decided prediction. The transition
-        // just applied inside this transaction, so throwing here rolls it back too.
-        throw new ApplicationException(
-          422,
-          "UNPROCESSABLE_TRANSITION",
-          "the prediction already has an outcome; a verification is recorded once " +
-          "and is never rewritten (STG-14.3)"
-        );
-      }
-      predictionRepository
-        .resolve(predictionId, outcome.name(), verifiedAt)
-        .orElseThrow(() ->
-          new ApplicationException(
-            409,
-            "VERSION_CONFLICT",
-            "the prediction was decided concurrently; re-read it and retry"
-          )
-        );
-    } else if (!alreadyDecided) {
-      // The port reported a replay but the prediction is still open, which means the
-      // original application did not commit as a whole. Never guess a state.
+    if (applied && alreadyDecided) {
+      // A second, genuinely new verification of a decided prediction. The transition
+      // just applied inside this transaction, so throwing here rolls it back too.
+      throw new ApplicationException(
+        422,
+        "UNPROCESSABLE_TRANSITION",
+        "the prediction already has an outcome; a verification is recorded once " +
+        "and is never rewritten (STG-14.3)"
+      );
+    }
+    if (!applied && !alreadyDecided) {
+      // The port reported a replay but the prediction was still open when this
+      // request began, which means the original application did not commit as a
+      // whole. Never guess a state; roll the freshly written record back.
       throw new ApplicationException(
         409,
         "VERSION_CONFLICT",

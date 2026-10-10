@@ -249,14 +249,18 @@ public class JdbcEvidencePredictionRepository
     if (analysisId == null || !analysisExists(analysisId)) {
       throw ApplicationException.missing();
     }
-    // The CASE keeps the lateral function total: a snapshot without a facts array (or
-    // with a legacy payload) yields the empty set instead of a cast error.
+    // The stored snapshot is the whole `Analysis` record, so its facts live at
+    // `result.facts`, not at the payload root: `JdbcAnalysisRepository` writes
+    // `json.write(analysis)`. Reading the root yields the empty set for every real
+    // row, and PR-09 then rejects every evidence item that cites a fact — which is
+    // exactly what the Wave 2B integration gate observed. The CASE keeps the lateral
+    // function total for a legacy or incomplete payload.
     return new LinkedHashSet<>(
       db.query(
         "SELECT value->>'id' FROM analyses" +
         " CROSS JOIN LATERAL jsonb_array_elements(" +
-        "   CASE WHEN jsonb_typeof(payload->'facts') = 'array'" +
-        "        THEN payload->'facts' ELSE '[]'::jsonb END) AS value" +
+        "   CASE WHEN jsonb_typeof(payload->'result'->'facts') = 'array'" +
+        "        THEN payload->'result'->'facts' ELSE '[]'::jsonb END) AS value" +
         " WHERE analyses.id=?",
         (rs, n) -> parseUuid(rs.getString(1)),
         analysisId

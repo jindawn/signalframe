@@ -225,7 +225,15 @@ export function HypothesisPage({ id }: { id: string }) {
                   const { text, trailer } = parseTransition(e.reason);
                   return (
                     <li key={e.id}>
-                      <span className="tag">{eventLabel[e.eventType]}</span>
+                      {/*
+                        The canonical event type stays visible next to its label: the
+                        enum is contract vocabulary (`CREATED`, `STATUS_CHANGED`, …)
+                        and a reader must not have to rely on translated copy to know
+                        what the timeline row says. It is its own element so the
+                        smoke assertion on the exact token keeps matching.
+                      */}
+                      <span className="tag">{e.eventType}</span>
+                      <span className="muted"> {eventLabel[e.eventType]}</span>
                       <Movement event={e} trailer={trailer} />
                       <p>{text}</p>
                       {trailer && trailer.moved.length > 0 && (
