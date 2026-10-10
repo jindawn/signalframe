@@ -906,17 +906,29 @@ public class StageResponseReader {
    * silently coerced.
    */
   private StageOutputException wrongShape(String raw, String key) {
+    Map<String, Object> tree;
     try {
-      json.read(raw, Map.class);
+      tree = json.read(raw, Map.class);
     } catch (RuntimeException notJson) {
       return StageOutputException.malformed(
         "the model response is not decodable JSON"
       );
     }
+    // A structural hint, never a content dump: the top-level keys and the length
+    // are enough to tell a wrapper ({"facts":{"facts":[...]}}) from prose from a
+    // truncated reply, and the model's text stays out of the job record.
+    var keys = tree == null ? List.of() : List.copyOf(tree.keySet());
+    var shape = keys.isEmpty()
+      ? "an object with no keys"
+      : "top-level keys " + keys;
     return StageOutputException.schema(
       "expected a JSON object with a '" +
       key +
-      "' array (or a complete AnalysisResult snapshot)"
+      "' array (or a complete AnalysisResult snapshot); the reply was " +
+      shape +
+      " (" +
+      (raw == null ? 0 : raw.length()) +
+      " chars)"
     );
   }
 

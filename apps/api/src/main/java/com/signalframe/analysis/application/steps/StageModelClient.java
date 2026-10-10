@@ -233,8 +233,7 @@ public class StageModelClient {
     ModelUsage usage = response == null || response.usage() == null
       ? new ModelUsage(null, null, null, null)
       : response.usage();
-    runs.save(
-      new ModelRun(
+    var run = new ModelRun(
         UUID.randomUUID(),
         call.jobId(),
         response == null ? profile.provider() : response.provider(),
@@ -251,8 +250,31 @@ public class StageModelClient {
         status,
         errorCode,
         call.correlationId()
-      )
+      );
+    runs.save(run);
+    // The audit row is the only place a stage's provider, latency and usage live,
+    // so the same facts are logged: without this a failed probe loses the token
+    // counts and the timing of an attempt that has already been paid for.
+    log.info(
+      "StageModelRun stage={} provider={} model={} purpose={} promptVersion={} status={} errorType={} latencyMs={} inputTokens={} outputTokens={} totalTokens={} estimatedCost={}",
+      call.stage(),
+      run.provider(),
+      run.model(),
+      run.purpose(),
+      run.promptVersion(),
+      run.status(),
+      run.errorType(),
+      run.latencyMs(),
+      unknown(run.inputTokens()),
+      unknown(run.outputTokens()),
+      unknown(run.totalTokens()),
+      unknown(run.estimatedCost())
     );
+  }
+
+  /** Renders an absent measurement as UNKNOWN rather than as a fabricated zero. */
+  private static Object unknown(Object value) {
+    return value == null ? "UNKNOWN" : value;
   }
 
   private void pause() {
