@@ -132,14 +132,14 @@ class ProtocolPipelineTest {
           ref.quote()
         );
       }
-      assertTrue(fact.reasoning().contains("verificationStatus=REPORTED"));
+      assertEquals("REPORTED", fact.verificationStatus());
     }
     assertFalse(snapshot.hypotheses().isEmpty());
     for (var hypothesis : snapshot.hypotheses()) {
       assertEquals(ClaimType.HYPOTHESIS, hypothesis.type());
-      assertEquals("OPEN", hypothesis.status());
-      assertTrue(hypothesis.reasoning().contains("supportingFactRefs="));
-      assertTrue(hypothesis.reasoning().contains("falsificationRefs="));
+      assertEquals(HypothesisStatus.OPEN, hypothesis.status());
+      assertFalse(hypothesis.supportingFactRefs().isEmpty());
+      assertFalse(hypothesis.falsificationConditions().isEmpty());
       assertTrue(hypothesis.confidenceReason().contains("method=RUBRIC"));
     }
     assertFalse(snapshot.unknowns().isEmpty());
@@ -155,21 +155,23 @@ class ProtocolPipelineTest {
       new MockModelGateway(PipelineFixtures.json()),
       PipelineFixtures.news()
     );
-    var assessment = outcome
-      .analyses()
-      .completed()
-      .getFirst()
-      .result()
-      .confidenceAssessment();
-    String reason = assessment.reason();
-    assertTrue(reason.contains("method=RUBRIC"));
-    assertTrue(reason.contains("RUBRIC 0.1"));
-    assertTrue(reason.contains("protocolVersion=0.1"));
-    assertTrue(reason.contains("rubricVersion=0.1"));
-    assertTrue(reason.contains("domainStrategy="));
-    assertTrue(reason.contains("promptVersions=synthesis-v1"));
-    assertTrue(reason.contains("isProbability=false"));
-    assertTrue(reason.contains("not a probability of truth"));
+    var snapshot = outcome.analyses().completed().getFirst().result();
+    var assessment = snapshot.confidenceAssessment();
+    // SCH-09/SCH-13: the rubric state and the run provenance are structured
+    // fields now, so the assertion reads them instead of parsing free text.
+    assertEquals(ConfidenceMethod.RUBRIC, assessment.method());
+    assertEquals("0.1", assessment.rubricVersion());
+    assertFalse(assessment.dimensions().isEmpty());
+    assertFalse(assessment.isProbability());
+    assertTrue(assessment.reason().contains("RUBRIC 0.1"));
+    assertTrue(assessment.reason().contains("not a probability of truth"));
+    assertEquals("0.1", snapshot.protocolVersion());
+    assertNotNull(snapshot.provenance());
+    assertFalse(snapshot.provenance().domainStrategyId().isBlank());
+    assertEquals(
+      List.of("synthesis-v1"),
+      snapshot.provenance().promptVersions()
+    );
     assertTrue(assessment.score() >= 0 && assessment.score() <= 100);
   }
 

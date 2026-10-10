@@ -9,5 +9,6 @@ public record Fact(
     @jakarta.validation.Valid @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max=20000) String statement,
     @jakarta.validation.Valid @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max=20000) String reasoning,
     @jakarta.validation.Valid @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Min(0) @jakarta.validation.constraints.Max(100) Integer confidence,
-    @jakarta.validation.constraints.NotNull java.util.List<@jakarta.validation.Valid SourceRef> sourceRefs
+    @jakarta.validation.constraints.NotNull java.util.List<@jakarta.validation.Valid SourceRef> sourceRefs,
+    @jakarta.validation.Valid @jakarta.validation.constraints.Pattern(regexp="REPORTED|CORROBORATED|DISPUTED") String verificationStatus
 ) {}

@@ -15,11 +15,15 @@ public record AnalysisResult(
     @jakarta.validation.constraints.NotNull java.util.List<@jakarta.validation.Valid Statement> alternativeExplanations,
     @jakarta.validation.constraints.NotNull java.util.List<@jakarta.validation.Valid Statement> counterArguments,
     @jakarta.validation.constraints.NotNull java.util.List<@jakarta.validation.Valid Statement> falsificationConditions,
-    @jakarta.validation.constraints.NotNull java.util.List<@jakarta.validation.Valid Statement> corroboratingSignals,
+    @jakarta.validation.constraints.NotNull java.util.List<@jakarta.validation.Valid CorroboratingSignal> corroboratingSignals,
     @jakarta.validation.constraints.NotNull java.util.List<@jakarta.validation.Valid Indicator> verificationIndicators,
     @jakarta.validation.constraints.NotNull java.util.List<@jakarta.validation.Valid Statement> unknowns,
     @jakarta.validation.Valid @jakarta.validation.constraints.NotNull ConfidenceAssessment confidenceAssessment,
     @jakarta.validation.constraints.NotNull java.util.List<@jakarta.validation.Valid Statement> upcomingObservations,
     @jakarta.validation.Valid @jakarta.validation.constraints.NotNull Boolean modifiesExistingHypotheses,
-    @jakarta.validation.Valid @jakarta.validation.constraints.NotNull Boolean demo
+    @jakarta.validation.Valid @jakarta.validation.constraints.NotNull Boolean demo,
+    @jakarta.validation.Valid SourceAssessment sourceAssessment,
+     java.util.List<@jakarta.validation.Valid Prediction> predictions,
+    @jakarta.validation.Valid String protocolVersion,
+    @jakarta.validation.Valid Provenance provenance
 ) {}

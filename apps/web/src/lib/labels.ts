@@ -11,6 +11,7 @@ export const claimLabel: Record<Schema<"ClaimType">, string> = {
   INFERENCE: "推断",
   HYPOTHESIS: "假设",
   PREDICTION: "预测",
+  UNKNOWN: "未知",
 };
 
 export const claimGlyph: Record<Schema<"ClaimType">, string> = {
@@ -18,6 +19,7 @@ export const claimGlyph: Record<Schema<"ClaimType">, string> = {
   INFERENCE: "◇",
   HYPOTHESIS: "◆",
   PREDICTION: "△",
+  UNKNOWN: "?",
 };
 
 export const directionArrow: Record<
@@ -57,14 +59,24 @@ export const stakeholderOrder: Schema<"StakeholderImpact">["direction"][] = [
   "UNKNOWN",
 ];
 
+/**
+ * Protocol status vocabulary (EPISTEMIC_TYPES §2.3) plus the legacy values that
+ * stored payloads still carry. `SUPPORTED`/`CHALLENGED`/`ARCHIVED` are read-only
+ * history: the protocol reading of them is STRENGTHENING/WEAKENING/UNRESOLVED, and
+ * they are never written again (EPISTEMIC_TYPES §6).
+ */
 export const hypothesisStatusLabel: Record<
   Schema<"Hypothesis">["status"],
   string
 > = {
   OPEN: "开放",
+  STRENGTHENING: "趋于增强",
+  WEAKENING: "趋于减弱",
+  CONFIRMED: "已被预测验证",
+  REJECTED: "已否定",
+  UNRESOLVED: "未决",
   SUPPORTED: "已有支持",
   CHALLENGED: "受到挑战",
-  REJECTED: "已否定",
   ARCHIVED: "已归档",
 };
 

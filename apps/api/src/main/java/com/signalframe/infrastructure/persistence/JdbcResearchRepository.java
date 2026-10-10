@@ -28,14 +28,19 @@ public class JdbcResearchRepository implements ResearchRepository {
   public Optional<HypothesisDetail> hypothesis(UUID id) {
     return db
       .query(
-        "SELECT payload::text FROM hypotheses WHERE id=?",
-        (rs, n) -> json.read(rs.getString(1), Hypothesis.class),
+        "SELECT payload::text, version FROM hypotheses WHERE id=?",
+        (rs, n) -> new Object[] {
+          json.read(rs.getString(1), Hypothesis.class),
+          rs.getLong(2),
+        },
         id
       )
       .stream()
       .findFirst()
-      .map(h ->
-        new HypothesisDetail(
+      .map(row -> {
+        var h = (Hypothesis) row[0];
+        long version = (Long) row[1];
+        return new HypothesisDetail(
           h,
           db.query(
             "SELECT payload::text FROM hypothesis_events WHERE hypothesis_id=? ORDER BY created_at",
@@ -51,9 +56,10 @@ public class JdbcResearchRepository implements ResearchRepository {
             "SELECT payload::text FROM predictions WHERE hypothesis_id=? ORDER BY expected_by",
             (rs, n) -> json.read(rs.getString(1), Prediction.class),
             id
-          )
-        )
-      );
+          ),
+          version
+        );
+      });
   }
 
   public List<Topic> topics() {

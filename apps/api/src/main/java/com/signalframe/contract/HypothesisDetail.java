@@ -7,5 +7,6 @@ public record HypothesisDetail(
     @jakarta.validation.Valid @jakarta.validation.constraints.NotNull Hypothesis hypothesis,
     @jakarta.validation.constraints.NotNull java.util.List<@jakarta.validation.Valid HypothesisEvent> timeline,
     @jakarta.validation.constraints.NotNull java.util.List<@jakarta.validation.Valid Evidence> evidence,
-    @jakarta.validation.constraints.NotNull java.util.List<@jakarta.validation.Valid Prediction> predictions
+    @jakarta.validation.constraints.NotNull java.util.List<@jakarta.validation.Valid Prediction> predictions,
+    @jakarta.validation.Valid @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Min(0) Long version
 ) {}

@@ -1,6 +1,7 @@
 package com.signalframe.analysis.application.steps;
 
 import com.signalframe.contract.JobStatus;
+import com.signalframe.shared.confidence.ConfidenceRubric;
 import org.springframework.stereotype.Component;
 
 /**

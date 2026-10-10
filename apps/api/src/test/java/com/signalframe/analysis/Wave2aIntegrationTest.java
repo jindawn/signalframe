@@ -10,6 +10,7 @@ import com.signalframe.analysis.support.PipelineFixtures;
 import com.signalframe.analysis.support.PipelineFixtures.*;
 import com.signalframe.contract.AnalysisResult;
 import com.signalframe.contract.CausalLink;
+import com.signalframe.contract.ConfidenceMethod;
 import com.signalframe.contract.DomainType;
 import com.signalframe.contract.ModelPurpose;
 import com.signalframe.contract.NewsItem;
@@ -129,17 +130,12 @@ class Wave2aIntegrationTest {
 
   /** The strategy id the pipeline records in the snapshot's provenance (PR-16). */
   private static String recordedStrategyId(AnalysisResult snapshot) {
-    String reason = snapshot.confidenceAssessment().reason();
-    assertTrue(
-      reason.contains("domainStrategy="),
-      "provenance must name the selected strategy"
-    );
-    for (String field : reason.split("; ")) {
-      if (field.startsWith("domainStrategy=")) return field.substring(
-        "domainStrategy=".length()
-      );
-    }
-    return "";
+    var provenance = snapshot.provenance();
+    assertNotNull(provenance, "provenance must name the selected strategy (PR-16)");
+    String id = provenance.domainStrategyId();
+    assertNotNull(id, "provenance must name the selected strategy");
+    assertFalse(id.isBlank(), "provenance must name the selected strategy");
+    return id;
   }
 
   // ---- A/B/C/D: classification -> resolver -> strategy ---------------------
@@ -353,10 +349,9 @@ class Wave2aIntegrationTest {
   void noPersistedMechanismIsSupportedWithoutFactRefs() {
     var snapshot = runDraft(AI_NEWS).snapshot();
     for (CausalLink mechanism : snapshot.mechanisms()) {
-      String reasoning = mechanism.reasoning();
-      if (reasoning.contains("supportLevel=SUPPORTED")) {
-        assertTrue(
-          reasoning.contains("factRefs="),
+      if ("SUPPORTED".equals(mechanism.supportLevel())) {
+        assertFalse(
+          mechanism.factRefs().isEmpty(),
           "STG-05: SUPPORTED requires fact refs on both ends, never template existence"
         );
       }
@@ -437,8 +432,8 @@ class Wave2aIntegrationTest {
     );
     var persisted = outcome.snapshot();
     for (Variable variable : persisted.variables()) {
-      if (!"UNKNOWN".equals(variable.direction())) assertTrue(
-        variable.reasoning().contains("factRefs="),
+      if (!"UNKNOWN".equals(variable.direction())) assertFalse(
+        variable.factRefs().isEmpty(),
         "EP-01/EP-05: a direction requires a resolvable fact reference"
       );
     }
@@ -482,11 +477,12 @@ class Wave2aIntegrationTest {
         assessment.isProbability(),
         "CF-01: the score is never a probability of truth"
       );
-      assertTrue(
-        assessment.reason().contains("method=RUBRIC"),
+      assertEquals(
+        ConfidenceMethod.RUBRIC,
+        assessment.method(),
         "CF-08: the stored assessment must be rubric-scored"
       );
-      assertTrue(assessment.reason().contains("rubricVersion=0.1"));
+      assertEquals("0.1", assessment.rubricVersion());
       assertTrue(assessment.score() >= 0 && assessment.score() <= 100);
     }
   }

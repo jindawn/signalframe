@@ -135,17 +135,19 @@ class AnalysisPipelineSliceTest {
           ref.quote()
         );
       }
-      assertTrue(fact.reasoning().contains("verificationStatus=REPORTED"));
+      assertEquals("REPORTED", fact.verificationStatus());
     }
 
     // STG-16: the stored confidence is the deterministic rubric, and it records
     // the versions that produced the snapshot.
     var assessment = result.confidenceAssessment();
     assertFalse(assessment.isProbability());
-    assertTrue(assessment.reason().contains("method=RUBRIC"));
-    assertTrue(assessment.reason().contains("protocolVersion=0.1"));
-    assertTrue(assessment.reason().contains("rubricVersion=0.1"));
-    assertTrue(assessment.reason().contains("promptVersions="));
+    assertEquals(ConfidenceMethod.RUBRIC, assessment.method());
+    assertEquals("0.1", assessment.rubricVersion());
+    assertFalse(assessment.dimensions().isEmpty());
+    assertEquals("0.1", result.protocolVersion());
+    assertNotNull(result.provenance());
+    assertFalse(result.provenance().promptVersions().isEmpty());
     assertTrue(assessment.score() >= 0 && assessment.score() <= 100);
 
     // PR-05/STG-16.2: a single-source snapshot must state what is missing.
@@ -157,10 +159,10 @@ class AnalysisPipelineSliceTest {
     // STG-09: hypotheses start OPEN and carry their protocol refs.
     for (var hypothesis : result.hypotheses()) {
       assertEquals(ClaimType.HYPOTHESIS, hypothesis.type());
-      assertEquals("OPEN", hypothesis.status());
+      assertEquals(HypothesisStatus.OPEN, hypothesis.status());
       assertFalse(hypothesis.confidenceReason().isBlank());
-      assertTrue(hypothesis.reasoning().contains("supportingFactRefs="));
-      assertTrue(hypothesis.reasoning().contains("falsificationRefs="));
+      assertFalse(hypothesis.supportingFactRefs().isEmpty());
+      assertFalse(hypothesis.falsificationConditions().isEmpty());
     }
     assertFalse(result.modifiesExistingHypotheses());
     assertTrue(result.demo(), "offline mock output must be marked as demo");

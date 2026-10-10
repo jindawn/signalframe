@@ -14,7 +14,8 @@
           "FACT",
           "INFERENCE",
           "HYPOTHESIS",
-          "PREDICTION"
+          "PREDICTION",
+          "UNKNOWN"
         ]
       },
       "DomainType": {
@@ -132,6 +133,34 @@
             "items": {
               "$ref": "#/components/schemas/SourceRef"
             }
+          },
+          "factRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "derivedFromRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "targetHypothesisRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "rivalsHypothesisRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -174,6 +203,17 @@
             "items": {
               "$ref": "#/components/schemas/SourceRef"
             }
+          },
+          "verificationStatus": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "REPORTED",
+              "CORROBORATED",
+              "DISPUTED"
+            ]
           }
         }
       },
@@ -232,6 +272,37 @@
             "items": {
               "$ref": "#/components/schemas/SourceRef"
             }
+          },
+          "previousState": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "currentState": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "magnitude": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "whyItMatters": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "factRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         }
       },
@@ -285,6 +356,24 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/SourceRef"
+            }
+          },
+          "supportLevel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "SUPPORTED",
+              "PLAUSIBLE",
+              "SPECULATIVE"
+            ]
+          },
+          "factRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
             }
           }
         }
@@ -344,6 +433,13 @@
             "items": {
               "$ref": "#/components/schemas/SourceRef"
             }
+          },
+          "factRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         }
       },
@@ -380,14 +476,7 @@
             "maxLength": 20000
           },
           "status": {
-            "type": "string",
-            "enum": [
-              "OPEN",
-              "SUPPORTED",
-              "CHALLENGED",
-              "REJECTED",
-              "ARCHIVED"
-            ]
+            "$ref": "#/components/schemas/HypothesisStatus"
           },
           "confidenceReason": {
             "type": "string",
@@ -425,6 +514,56 @@
             "items": {
               "$ref": "#/components/schemas/SourceRef"
             }
+          },
+          "supportingFactRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "supportingEvidenceRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "contradictingEvidenceRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "assumptions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "alternativeHypothesisRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "falsificationConditions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Statement"
+            }
+          },
+          "confidenceBand": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConfidenceBand"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -474,6 +613,20 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "factRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "analysisId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -516,6 +669,7 @@
           "status": {
             "type": "string",
             "enum": [
+              "OPEN",
               "CONFIRMED",
               "REJECTED",
               "PARTIAL",
@@ -526,6 +680,25 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 20000
+          },
+          "observable": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "whereToCheck": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "basisFactRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         }
       },
@@ -594,6 +767,50 @@
             "items": {
               "$ref": "#/components/schemas/SourceRef"
             }
+          },
+          "whereToCheck": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "supportingResult": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "contradictingResult": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "priority": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "HIGH",
+              "MEDIUM",
+              "LOW",
+              "UNKNOWN"
+            ]
+          },
+          "deadline": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "hypothesisRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -621,6 +838,46 @@
             "enum": [
               false
             ]
+          },
+          "band": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConfidenceBand"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "method": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConfidenceMethod"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rubricVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfidenceDimension"
+            }
+          },
+          "advisoryScore": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
           }
         }
       },
@@ -716,7 +973,7 @@
           "corroboratingSignals": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Statement"
+              "$ref": "#/components/schemas/CorroboratingSignal"
             }
           },
           "verificationIndicators": {
@@ -745,6 +1002,38 @@
           },
           "demo": {
             "type": "boolean"
+          },
+          "sourceAssessment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceAssessment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "predictions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Prediction"
+            }
+          },
+          "protocolVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provenance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Provenance"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -1093,7 +1382,8 @@
               "CREATED",
               "EVIDENCE_ADDED",
               "CONFIDENCE_CHANGED",
-              "PREDICTION_VERIFIED"
+              "PREDICTION_VERIFIED",
+              "STATUS_CHANGED"
             ]
           },
           "previousConfidence": {
@@ -1117,6 +1407,26 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "previousStatus": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HypothesisStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HypothesisStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -1127,7 +1437,8 @@
           "hypothesis",
           "timeline",
           "evidence",
-          "predictions"
+          "predictions",
+          "version"
         ],
         "properties": {
           "hypothesis": {
@@ -1150,6 +1461,11 @@
             "items": {
               "$ref": "#/components/schemas/Prediction"
             }
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           }
         }
       },
@@ -1351,6 +1667,617 @@
           },
           "requestId": {
             "type": "string"
+          }
+        }
+      },
+      "SourceAssessment": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sourceType",
+          "publisher",
+          "publishedAt",
+          "primaryOrSecondary",
+          "independence",
+          "contentCompleteness",
+          "notes"
+        ],
+        "properties": {
+          "sourceType": {
+            "type": "string",
+            "enum": [
+              "PRIMARY_DOCUMENT",
+              "OFFICIAL_STATEMENT",
+              "COMPANY_DISCLOSURE",
+              "PRESS_RELEASE",
+              "NEWS_REPORT",
+              "WIRE_REPUBLICATION",
+              "OPINION_ANALYSIS",
+              "SOCIAL_POST",
+              "UNKNOWN"
+            ]
+          },
+          "publisher": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "publishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "primaryOrSecondary": {
+            "type": "string",
+            "enum": [
+              "PRIMARY",
+              "SECONDARY",
+              "UNKNOWN"
+            ]
+          },
+          "independence": {
+            "type": "string",
+            "enum": [
+              "SINGLE_SOURCE",
+              "SAME_PUBLISHER_DUPLICATE",
+              "INDEPENDENT_SET",
+              "UNKNOWN"
+            ]
+          },
+          "independenceKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "contentCompleteness": {
+            "type": "string",
+            "enum": [
+              "COMPLETE",
+              "PARTIAL",
+              "TRUNCATED",
+              "METADATA_ONLY",
+              "UNKNOWN"
+            ]
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ConfidenceBand": {
+        "type": "string",
+        "enum": [
+          "VERY_LOW",
+          "LOW",
+          "MEDIUM",
+          "HIGH",
+          "VERY_HIGH"
+        ]
+      },
+      "ConfidenceMethod": {
+        "type": "string",
+        "enum": [
+          "MODEL_JUDGMENT",
+          "RUBRIC"
+        ]
+      },
+      "HypothesisStatus": {
+        "type": "string",
+        "enum": [
+          "OPEN",
+          "STRENGTHENING",
+          "WEAKENING",
+          "CONFIRMED",
+          "REJECTED",
+          "UNRESOLVED",
+          "SUPPORTED",
+          "CHALLENGED",
+          "ARCHIVED"
+        ]
+      },
+      "ConfidenceDimension": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "dimension",
+          "level",
+          "points"
+        ],
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "enum": [
+              "D1_SOURCE_QUALITY",
+              "D2_EVIDENCE_DIRECTNESS",
+              "D3_INDEPENDENT_CORROBORATION",
+              "D4_MECHANISM_SUPPORT",
+              "D5_COUNTER_EVIDENCE_RESILIENCE"
+            ]
+          },
+          "level": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5
+          },
+          "points": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CorroboratingSignal": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "statement",
+          "reasoning",
+          "confidence",
+          "sourceRefs",
+          "hypothesisRef",
+          "whereToCheck",
+          "status"
+        ],
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ClaimType"
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "reasoning": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "confidence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "sourceRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            }
+          },
+          "hypothesisRef": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "whereToCheck": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "window": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "NOT_OBSERVED",
+              "OBSERVED",
+              "NOT_FOUND"
+            ]
+          }
+        }
+      },
+      "Provenance": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "protocolVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "domainStrategyId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rubricVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "promptVersions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "modelRunIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "HypothesisTransitionCause": {
+        "type": "string",
+        "enum": [
+          "EVIDENCE_ADDED",
+          "EVIDENCE_CHANGED",
+          "PREDICTION_VERIFIED",
+          "FALSIFICATION_OBSERVED",
+          "DEADLINE_PASSED"
+        ]
+      },
+      "VerificationOutcome": {
+        "type": "string",
+        "enum": [
+          "CONFIRMED",
+          "PARTIAL",
+          "REJECTED",
+          "UNRESOLVED"
+        ]
+      },
+      "HypothesisTransitionCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operationId",
+          "expectedVersion",
+          "cause",
+          "reason"
+        ],
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "cause": {
+            "$ref": "#/components/schemas/HypothesisTransitionCause"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "evidenceRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "predictionRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "verificationOutcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VerificationOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "HypothesisTransitionResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operationId",
+          "hypothesisId",
+          "applied",
+          "previousVersion",
+          "version",
+          "previousStatus",
+          "status",
+          "previousConfidence",
+          "confidence",
+          "eventId",
+          "occurredAt"
+        ],
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hypothesisId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "applied": {
+            "type": "boolean"
+          },
+          "previousVersion": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "previousStatus": {
+            "$ref": "#/components/schemas/HypothesisStatus"
+          },
+          "status": {
+            "$ref": "#/components/schemas/HypothesisStatus"
+          },
+          "previousConfidence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "confidence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "confidenceBand": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConfidenceBand"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rubricVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "HypothesisTimeline": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "hypothesisId",
+          "version",
+          "status",
+          "confidence",
+          "items"
+        ],
+        "properties": {
+          "hypothesisId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "status": {
+            "$ref": "#/components/schemas/HypothesisStatus"
+          },
+          "confidence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HypothesisEvent"
+            }
+          }
+        }
+      },
+      "EvidenceCreateRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sourceId",
+          "stance",
+          "strength",
+          "reason"
+        ],
+        "properties": {
+          "sourceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stance": {
+            "type": "string",
+            "enum": [
+              "SUPPORTS",
+              "CONTRADICTS",
+              "NEUTRAL"
+            ]
+          },
+          "strength": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "factRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "analysisId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "PredictionCreateRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "statement",
+          "observable",
+          "expectedBy",
+          "verificationCriteria",
+          "whereToCheck"
+        ],
+        "properties": {
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "observable": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "expectedBy": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "verificationCriteria": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "whereToCheck": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "basisFactRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "PredictionVerificationCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operationId",
+          "result",
+          "reason"
+        ],
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "result": {
+            "$ref": "#/components/schemas/VerificationOutcome"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "evidenceRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "verifiedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "PredictionVerificationResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "prediction",
+          "applied",
+          "verificationId",
+          "hypothesisTransition"
+        ],
+        "properties": {
+          "prediction": {
+            "$ref": "#/components/schemas/Prediction"
+          },
+          "applied": {
+            "type": "boolean"
+          },
+          "verificationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hypothesisTransition": {
+            "$ref": "#/components/schemas/HypothesisTransitionResult"
+          }
+        }
+      },
+      "DuePredictions": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "asOf",
+          "predictions"
+        ],
+        "properties": {
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "predictions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Prediction"
+            }
           }
         }
       }

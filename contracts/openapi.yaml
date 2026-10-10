@@ -1068,6 +1068,502 @@
           }
         }
       }
+    },
+    "/api/v1/hypotheses/{id}/transitions": {
+      "post": {
+        "operationId": "transitionHypothesis",
+        "tags": [
+          "hypotheses"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HypothesisTransitionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HypothesisTransitionCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/hypotheses/{id}/timeline": {
+      "get": {
+        "operationId": "getHypothesisTimeline",
+        "tags": [
+          "hypotheses"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HypothesisTimeline"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/hypotheses/{id}/evidence": {
+      "post": {
+        "operationId": "addEvidence",
+        "tags": [
+          "evidence"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Evidence"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceCreateRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/hypotheses/{id}/predictions": {
+      "post": {
+        "operationId": "createPrediction",
+        "tags": [
+          "predictions"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Prediction"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PredictionCreateRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/predictions/due": {
+      "get": {
+        "operationId": "listDuePredictions",
+        "tags": [
+          "predictions"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DuePredictions"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/predictions/{id}/verification": {
+      "post": {
+        "operationId": "verifyPrediction",
+        "tags": [
+          "predictions"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PredictionVerificationResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PredictionVerificationCommand"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1078,7 +1574,8 @@
           "FACT",
           "INFERENCE",
           "HYPOTHESIS",
-          "PREDICTION"
+          "PREDICTION",
+          "UNKNOWN"
         ]
       },
       "DomainType": {
@@ -1196,6 +1693,30 @@
             "items": {
               "$ref": "#/components/schemas/SourceRef"
             }
+          },
+          "factRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "derivedFromRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "targetHypothesisRef": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "rivalsHypothesisRef": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
           }
         }
       },
@@ -1238,6 +1759,15 @@
             "items": {
               "$ref": "#/components/schemas/SourceRef"
             }
+          },
+          "verificationStatus": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "REPORTED",
+              "CORROBORATED",
+              "DISPUTED"
+            ]
           }
         }
       },
@@ -1296,6 +1826,29 @@
             "items": {
               "$ref": "#/components/schemas/SourceRef"
             }
+          },
+          "previousState": {
+            "type": "string",
+            "nullable": true
+          },
+          "currentState": {
+            "type": "string",
+            "nullable": true
+          },
+          "magnitude": {
+            "type": "string",
+            "nullable": true
+          },
+          "whyItMatters": {
+            "type": "string",
+            "nullable": true
+          },
+          "factRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         }
       },
@@ -1349,6 +1902,22 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/SourceRef"
+            }
+          },
+          "supportLevel": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "SUPPORTED",
+              "PLAUSIBLE",
+              "SPECULATIVE"
+            ]
+          },
+          "factRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
             }
           }
         }
@@ -1408,6 +1977,13 @@
             "items": {
               "$ref": "#/components/schemas/SourceRef"
             }
+          },
+          "factRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         }
       },
@@ -1444,14 +2020,7 @@
             "maxLength": 20000
           },
           "status": {
-            "type": "string",
-            "enum": [
-              "OPEN",
-              "SUPPORTED",
-              "CHALLENGED",
-              "REJECTED",
-              "ARCHIVED"
-            ]
+            "$ref": "#/components/schemas/HypothesisStatus"
           },
           "confidenceReason": {
             "type": "string",
@@ -1489,6 +2058,50 @@
             "items": {
               "$ref": "#/components/schemas/SourceRef"
             }
+          },
+          "supportingFactRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "supportingEvidenceRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "contradictingEvidenceRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "assumptions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "alternativeHypothesisRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "falsificationConditions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Statement"
+            }
+          },
+          "confidenceBand": {
+            "$ref": "#/components/schemas/ConfidenceBand",
+            "nullable": true
           }
         }
       },
@@ -1538,6 +2151,18 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "factRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "analysisId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
           }
         }
       },
@@ -1580,6 +2205,7 @@
           "status": {
             "type": "string",
             "enum": [
+              "OPEN",
               "CONFIRMED",
               "REJECTED",
               "PARTIAL",
@@ -1590,6 +2216,21 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 20000
+          },
+          "observable": {
+            "type": "string",
+            "nullable": true
+          },
+          "whereToCheck": {
+            "type": "string",
+            "nullable": true
+          },
+          "basisFactRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         }
       },
@@ -1656,6 +2297,38 @@
             "items": {
               "$ref": "#/components/schemas/SourceRef"
             }
+          },
+          "whereToCheck": {
+            "type": "string",
+            "nullable": true
+          },
+          "supportingResult": {
+            "type": "string",
+            "nullable": true
+          },
+          "contradictingResult": {
+            "type": "string",
+            "nullable": true
+          },
+          "priority": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "HIGH",
+              "MEDIUM",
+              "LOW",
+              "UNKNOWN"
+            ]
+          },
+          "deadline": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "hypothesisRef": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
           }
         }
       },
@@ -1683,6 +2356,30 @@
             "enum": [
               false
             ]
+          },
+          "band": {
+            "$ref": "#/components/schemas/ConfidenceBand",
+            "nullable": true
+          },
+          "method": {
+            "$ref": "#/components/schemas/ConfidenceMethod",
+            "nullable": true
+          },
+          "rubricVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfidenceDimension"
+            }
+          },
+          "advisoryScore": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "nullable": true
           }
         }
       },
@@ -1778,7 +2475,7 @@
           "corroboratingSignals": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Statement"
+              "$ref": "#/components/schemas/CorroboratingSignal"
             }
           },
           "verificationIndicators": {
@@ -1807,6 +2504,24 @@
           },
           "demo": {
             "type": "boolean"
+          },
+          "sourceAssessment": {
+            "$ref": "#/components/schemas/SourceAssessment",
+            "nullable": true
+          },
+          "predictions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Prediction"
+            }
+          },
+          "protocolVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance",
+            "nullable": true
           }
         }
       },
@@ -2141,7 +2856,8 @@
               "CREATED",
               "EVIDENCE_ADDED",
               "CONFIDENCE_CHANGED",
-              "PREDICTION_VERIFIED"
+              "PREDICTION_VERIFIED",
+              "STATUS_CHANGED"
             ]
           },
           "previousConfidence": {
@@ -2163,6 +2879,14 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "previousStatus": {
+            "$ref": "#/components/schemas/HypothesisStatus",
+            "nullable": true
+          },
+          "status": {
+            "$ref": "#/components/schemas/HypothesisStatus",
+            "nullable": true
           }
         }
       },
@@ -2173,7 +2897,8 @@
           "hypothesis",
           "timeline",
           "evidence",
-          "predictions"
+          "predictions",
+          "version"
         ],
         "properties": {
           "hypothesis": {
@@ -2196,6 +2921,11 @@
             "items": {
               "$ref": "#/components/schemas/Prediction"
             }
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           }
         }
       },
@@ -2387,6 +3117,577 @@
           },
           "requestId": {
             "type": "string"
+          }
+        }
+      },
+      "SourceAssessment": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sourceType",
+          "publisher",
+          "publishedAt",
+          "primaryOrSecondary",
+          "independence",
+          "contentCompleteness",
+          "notes"
+        ],
+        "properties": {
+          "sourceType": {
+            "type": "string",
+            "enum": [
+              "PRIMARY_DOCUMENT",
+              "OFFICIAL_STATEMENT",
+              "COMPANY_DISCLOSURE",
+              "PRESS_RELEASE",
+              "NEWS_REPORT",
+              "WIRE_REPUBLICATION",
+              "OPINION_ANALYSIS",
+              "SOCIAL_POST",
+              "UNKNOWN"
+            ]
+          },
+          "publisher": {
+            "type": "string",
+            "nullable": true
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "primaryOrSecondary": {
+            "type": "string",
+            "enum": [
+              "PRIMARY",
+              "SECONDARY",
+              "UNKNOWN"
+            ]
+          },
+          "independence": {
+            "type": "string",
+            "enum": [
+              "SINGLE_SOURCE",
+              "SAME_PUBLISHER_DUPLICATE",
+              "INDEPENDENT_SET",
+              "UNKNOWN"
+            ]
+          },
+          "independenceKey": {
+            "type": "string",
+            "nullable": true
+          },
+          "contentCompleteness": {
+            "type": "string",
+            "enum": [
+              "COMPLETE",
+              "PARTIAL",
+              "TRUNCATED",
+              "METADATA_ONLY",
+              "UNKNOWN"
+            ]
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ConfidenceBand": {
+        "type": "string",
+        "enum": [
+          "VERY_LOW",
+          "LOW",
+          "MEDIUM",
+          "HIGH",
+          "VERY_HIGH"
+        ]
+      },
+      "ConfidenceMethod": {
+        "type": "string",
+        "enum": [
+          "MODEL_JUDGMENT",
+          "RUBRIC"
+        ]
+      },
+      "HypothesisStatus": {
+        "type": "string",
+        "enum": [
+          "OPEN",
+          "STRENGTHENING",
+          "WEAKENING",
+          "CONFIRMED",
+          "REJECTED",
+          "UNRESOLVED",
+          "SUPPORTED",
+          "CHALLENGED",
+          "ARCHIVED"
+        ]
+      },
+      "ConfidenceDimension": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "dimension",
+          "level",
+          "points"
+        ],
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "enum": [
+              "D1_SOURCE_QUALITY",
+              "D2_EVIDENCE_DIRECTNESS",
+              "D3_INDEPENDENT_CORROBORATION",
+              "D4_MECHANISM_SUPPORT",
+              "D5_COUNTER_EVIDENCE_RESILIENCE"
+            ]
+          },
+          "level": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5
+          },
+          "points": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "CorroboratingSignal": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "statement",
+          "reasoning",
+          "confidence",
+          "sourceRefs",
+          "hypothesisRef",
+          "whereToCheck",
+          "status"
+        ],
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ClaimType"
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "reasoning": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "confidence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "sourceRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            }
+          },
+          "hypothesisRef": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "whereToCheck": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "window": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "NOT_OBSERVED",
+              "OBSERVED",
+              "NOT_FOUND"
+            ]
+          }
+        }
+      },
+      "Provenance": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "protocolVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "domainStrategyId": {
+            "type": "string",
+            "nullable": true
+          },
+          "rubricVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "promptVersions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "modelRunIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "HypothesisTransitionCause": {
+        "type": "string",
+        "enum": [
+          "EVIDENCE_ADDED",
+          "EVIDENCE_CHANGED",
+          "PREDICTION_VERIFIED",
+          "FALSIFICATION_OBSERVED",
+          "DEADLINE_PASSED"
+        ]
+      },
+      "VerificationOutcome": {
+        "type": "string",
+        "enum": [
+          "CONFIRMED",
+          "PARTIAL",
+          "REJECTED",
+          "UNRESOLVED"
+        ]
+      },
+      "HypothesisTransitionCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operationId",
+          "expectedVersion",
+          "cause",
+          "reason"
+        ],
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "cause": {
+            "$ref": "#/components/schemas/HypothesisTransitionCause"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "evidenceRef": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "predictionRef": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "verificationOutcome": {
+            "$ref": "#/components/schemas/VerificationOutcome",
+            "nullable": true
+          }
+        }
+      },
+      "HypothesisTransitionResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operationId",
+          "hypothesisId",
+          "applied",
+          "previousVersion",
+          "version",
+          "previousStatus",
+          "status",
+          "previousConfidence",
+          "confidence",
+          "eventId",
+          "occurredAt"
+        ],
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hypothesisId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "applied": {
+            "type": "boolean"
+          },
+          "previousVersion": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "previousStatus": {
+            "$ref": "#/components/schemas/HypothesisStatus"
+          },
+          "status": {
+            "$ref": "#/components/schemas/HypothesisStatus"
+          },
+          "previousConfidence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "confidence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "confidenceBand": {
+            "$ref": "#/components/schemas/ConfidenceBand",
+            "nullable": true
+          },
+          "rubricVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "HypothesisTimeline": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "hypothesisId",
+          "version",
+          "status",
+          "confidence",
+          "items"
+        ],
+        "properties": {
+          "hypothesisId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "status": {
+            "$ref": "#/components/schemas/HypothesisStatus"
+          },
+          "confidence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HypothesisEvent"
+            }
+          }
+        }
+      },
+      "EvidenceCreateRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sourceId",
+          "stance",
+          "strength",
+          "reason"
+        ],
+        "properties": {
+          "sourceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stance": {
+            "type": "string",
+            "enum": [
+              "SUPPORTS",
+              "CONTRADICTS",
+              "NEUTRAL"
+            ]
+          },
+          "strength": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "factRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "analysisId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          }
+        }
+      },
+      "PredictionCreateRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "statement",
+          "observable",
+          "expectedBy",
+          "verificationCriteria",
+          "whereToCheck"
+        ],
+        "properties": {
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "observable": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "expectedBy": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "verificationCriteria": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "whereToCheck": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "basisFactRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "PredictionVerificationCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operationId",
+          "result",
+          "reason"
+        ],
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "result": {
+            "$ref": "#/components/schemas/VerificationOutcome"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "evidenceRef": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "verifiedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "PredictionVerificationResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "prediction",
+          "applied",
+          "verificationId",
+          "hypothesisTransition"
+        ],
+        "properties": {
+          "prediction": {
+            "$ref": "#/components/schemas/Prediction"
+          },
+          "applied": {
+            "type": "boolean"
+          },
+          "verificationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hypothesisTransition": {
+            "$ref": "#/components/schemas/HypothesisTransitionResult"
+          }
+        }
+      },
+      "DuePredictions": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "asOf",
+          "predictions"
+        ],
+        "properties": {
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "predictions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Prediction"
+            }
           }
         }
       }

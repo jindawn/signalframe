@@ -18,6 +18,7 @@ import com.signalframe.analysis.application.strategies.PolicyDomainStrategy;
 import com.signalframe.analysis.application.strategies.RealEstateDomainStrategy;
 import com.signalframe.analysis.application.strategies.TechnologyAnalysisStrategy;
 import com.signalframe.analysis.domain.AnalysisRepository;
+import com.signalframe.shared.confidence.ConfidenceRubric;
 import com.signalframe.analysis.domain.DomainAnalysisStrategy;
 import com.signalframe.analysis.domain.NewsValueScorer;
 import com.signalframe.analysis.application.DefaultNewsValueScorer;

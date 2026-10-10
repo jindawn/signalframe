@@ -1,10 +1,9 @@
-package com.signalframe.analysis.application.steps;
+package com.signalframe.shared.confidence;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.signalframe.analysis.application.steps.ConfidenceInputs.Cap;
-import com.signalframe.analysis.application.steps.ProtocolModel.*;
-import com.signalframe.contract.SourceRef;
+import com.signalframe.contract.*;
+import com.signalframe.shared.confidence.ConfidenceInputs.Cap;
 import java.time.Instant;
 import java.util.*;
 import org.junit.jupiter.api.Test;
@@ -15,6 +14,10 @@ import org.junit.jupiter.api.Test;
  * <p>Covers the six worked examples as exact-value cases, the cap table, band
  * boundaries, Gate D recomputation, CF-06 fail-closed behaviour and a property
  * sweep over level combinations asserting the arithmetic invariants.
+ *
+ * <p>The fixtures are built from the generated contract records (SCH-01…SCH-13),
+ * which is also what makes the rubric usable by the research module: the inputs are
+ * the snapshot's own vocabulary, not an analysis-private copy of it.
  */
 class ConfidenceRubricTest {
 
@@ -24,11 +27,11 @@ class ConfidenceRubricTest {
   @Test
   void workedExample1SingleReportNoCorroborationNoMechanism() {
     var score = rubric.score(at(1, 2, 0, 0, 2));
-    assertEquals(1, score.dimensions().get(0).level());
-    assertEquals(2, score.dimensions().get(1).level());
-    assertEquals(0, score.dimensions().get(2).level());
-    assertEquals(0, score.dimensions().get(3).level());
-    assertEquals(2, score.dimensions().get(4).level());
+    assertEquals(1, score.dimensions().get(0).level().intValue());
+    assertEquals(2, score.dimensions().get(1).level().intValue());
+    assertEquals(0, score.dimensions().get(2).level().intValue());
+    assertEquals(0, score.dimensions().get(3).level().intValue());
+    assertEquals(2, score.dimensions().get(4).level().intValue());
     assertEquals(20, score.score());
     assertEquals(ConfidenceBand.VERY_LOW, score.band());
     // CAP-A is binding but its ceiling (49) is above the raw total (20), so the
@@ -87,11 +90,11 @@ class ConfidenceRubricTest {
   void everyWeightedDimensionIsExactWithoutRounding() {
     var score = rubric.score(at(3, 5, 4, 4, 4));
     for (var dimension : score.dimensions()) {
-      assertEquals(
-        dimension.weight() * dimension.level() / 5,
-        dimension.points(),
-        dimension.id()
-      );
+      int weight = RubricDimensions.weightOf(dimension.dimension());
+      int level = dimension.level().intValue();
+      int points = dimension.points().intValue();
+      assertEquals(weight * level / 5, points, dimension.dimension());
+      assertTrue(weight > 0, "every stored dimension belongs to the profile");
     }
     assertEquals(
       score.score(),
@@ -125,18 +128,18 @@ class ConfidenceRubricTest {
 
   @Test
   void bandBoundariesAreContiguousAndCover0To100() {
-    assertEquals(ConfidenceBand.VERY_LOW, ConfidenceBand.of(0));
-    assertEquals(ConfidenceBand.VERY_LOW, ConfidenceBand.of(29));
-    assertEquals(ConfidenceBand.LOW, ConfidenceBand.of(30));
-    assertEquals(ConfidenceBand.LOW, ConfidenceBand.of(49));
-    assertEquals(ConfidenceBand.MEDIUM, ConfidenceBand.of(50));
-    assertEquals(ConfidenceBand.MEDIUM, ConfidenceBand.of(69));
-    assertEquals(ConfidenceBand.HIGH, ConfidenceBand.of(70));
-    assertEquals(ConfidenceBand.HIGH, ConfidenceBand.of(84));
-    assertEquals(ConfidenceBand.VERY_HIGH, ConfidenceBand.of(85));
-    assertEquals(ConfidenceBand.VERY_HIGH, ConfidenceBand.of(100));
-    assertThrows(IllegalArgumentException.class, () -> ConfidenceBand.of(101));
-    assertThrows(IllegalArgumentException.class, () -> ConfidenceBand.of(-1));
+    assertEquals(ConfidenceBand.VERY_LOW, ConfidenceBands.of(0));
+    assertEquals(ConfidenceBand.VERY_LOW, ConfidenceBands.of(29));
+    assertEquals(ConfidenceBand.LOW, ConfidenceBands.of(30));
+    assertEquals(ConfidenceBand.LOW, ConfidenceBands.of(49));
+    assertEquals(ConfidenceBand.MEDIUM, ConfidenceBands.of(50));
+    assertEquals(ConfidenceBand.MEDIUM, ConfidenceBands.of(69));
+    assertEquals(ConfidenceBand.HIGH, ConfidenceBands.of(70));
+    assertEquals(ConfidenceBand.HIGH, ConfidenceBands.of(84));
+    assertEquals(ConfidenceBand.VERY_HIGH, ConfidenceBands.of(85));
+    assertEquals(ConfidenceBand.VERY_HIGH, ConfidenceBands.of(100));
+    assertThrows(IllegalArgumentException.class, () -> ConfidenceBands.of(101));
+    assertThrows(IllegalArgumentException.class, () -> ConfidenceBands.of(-1));
   }
 
   @Test
@@ -181,7 +184,7 @@ class ConfidenceRubricTest {
       0
     );
     var score = rubric.score(inputs);
-    assertEquals(ConfidenceScore.ConfidenceMethod.MODEL_JUDGMENT, score.method());
+    assertEquals(ConfidenceMethod.MODEL_JUDGMENT, score.method());
     assertTrue(score.dimensions().isEmpty());
     assertFalse(rubric.matchesStored(score, inputs));
   }
@@ -201,7 +204,7 @@ class ConfidenceRubricTest {
                 "caps never raise a score: " + score
               );
               assertEquals(
-                ConfidenceBand.of(score.score()),
+                ConfidenceBands.of(score.score()),
                 score.band(),
                 "band comes from the capped score"
               );
@@ -231,7 +234,7 @@ class ConfidenceRubricTest {
   }
 
   private static int rawPoints(ConfidenceScore score) {
-    return score.dimensions().stream().mapToInt(d -> d.points()).sum();
+    return score.dimensions().stream().mapToInt(d -> d.points().intValue()).sum();
   }
 
   private static int minCap(List<Cap> caps, int fallback) {
@@ -287,10 +290,12 @@ class ConfidenceRubricTest {
       var source = source(d1);
       var fact = new Fact(
         UUID.randomUUID(),
+        ClaimType.FACT,
         d2 >= 5 ? "价格下降 30%" : "A reported claim",
         "Reported source claim.",
+        40,
         List.of(new SourceRef(UUID.randomUUID(), "A reported claim", 0, 17)),
-        disputed ? ProofStatus.DISPUTED : ProofStatus.REPORTED
+        disputed ? "DISPUTED" : "REPORTED"
       );
       var facts = d2 == 0 ? List.<Fact>of() : List.of(fact);
       if (d2 == 0) {
@@ -314,16 +319,17 @@ class ConfidenceRubricTest {
         new Variable(
           UUID.randomUUID(),
           "unit price",
-          "UNKNOWN",
-          "lower",
-          Direction.DOWN,
-          "30%",
-          "changes the cost base of every buyer",
+          "DOWN",
+          ClaimType.INFERENCE,
           "unit price fell",
           "the fact states a 30% decline",
-          List.of(fact.id()),
+          40,
           List.of(),
-          40
+          "UNKNOWN",
+          "lower",
+          "30%",
+          "changes the cost base of every buyer",
+          List.of(fact.id())
         )
       );
       return assemble(
@@ -342,139 +348,158 @@ class ConfidenceRubricTest {
       );
     }
 
-    private List<Mechanism> mechanisms(int level) {
+    private List<CausalLink> mechanisms(int level) {
       if (level == 0) return List.of();
       var ref = UUID.randomUUID();
       return switch (level) {
         case 1 -> List.of(
-          new Mechanism(
+          new CausalLink(
             UUID.randomUUID(),
             "unit price",
             "demand",
-            SupportLevel.SPECULATIVE,
+            ClaimType.INFERENCE,
             "lower price may raise demand",
             "offered for testing",
+            20,
             List.of(),
-            List.of(),
-            List.of(),
-            "a downstream volume disclosure",
-            20
+            "SPECULATIVE",
+            List.of()
           )
         );
         case 2 -> List.of(
-          new Mechanism(
+          new CausalLink(
             UUID.randomUUID(),
             "unit price",
             "demand",
-            SupportLevel.PLAUSIBLE,
+            ClaimType.INFERENCE,
             "price elasticity",
             "consistent but undocumented",
-            List.of("demand is price elastic"),
+            20,
             List.of(),
-            List.of(),
-            "UNKNOWN",
-            20
+            "PLAUSIBLE",
+            List.of()
           )
         );
         case 3 -> List.of(
-          new Mechanism(
+          new CausalLink(
             UUID.randomUUID(),
             "unit price",
             "demand",
-            SupportLevel.PLAUSIBLE,
+            ClaimType.INFERENCE,
             "price elasticity",
             "consistent but undocumented",
-            List.of("demand is price elastic"),
-            List.of(ref),
+            20,
             List.of(),
-            "UNKNOWN",
-            20
+            "PLAUSIBLE",
+            List.of(ref)
           )
         );
         default -> List.of(
-          new Mechanism(
+          new CausalLink(
             UUID.randomUUID(),
             "unit price",
             "demand",
-            SupportLevel.SUPPORTED,
+            ClaimType.INFERENCE,
             "the source documents the volume response",
             "documented at both ends",
+            40,
             List.of(),
-            List.of(ref, UUID.randomUUID()),
-            List.of(),
-            "UNKNOWN",
-            40
+            "SUPPORTED",
+            List.of(ref, UUID.randomUUID())
           )
         );
       };
     }
 
-    private List<CounterArgument> counters(int level) {
+    private List<Statement> counters(int level) {
       if (level == 0) return List.of();
-      var ref = UUID.randomUUID();
       boolean withRef = level >= 3;
       return List.of(
-        new CounterArgument(
-          UUID.randomUUID(),
+        new Statement(
+          ClaimType.INFERENCE,
           "the disclosure is self-selected",
           "a definitional change could explain the move",
-          UUID.randomUUID(),
-          withRef ? List.of(ref) : List.of(),
+          20,
           List.of(),
-          20
+          withRef ? List.of(UUID.randomUUID()) : List.of(),
+          List.of(),
+          UUID.randomUUID(),
+          null
         )
       );
     }
 
-    private List<FalsificationCondition> conditions(int level) {
+    /**
+     * SCH-06 nests a falsification condition as a `Statement`, so STG-12's three
+     * mandatory parts travel in the reasoning trailer — the exact convention the
+     * rubric reads back for D5.
+     */
+    private List<Statement> conditions(int level) {
       if (level <= 1) return List.of();
       boolean observable = level >= 4;
       boolean timeBounded = level >= 5;
+      var reasoning = FalsificationConditionText.append(
+        "if the disclosure contradicts the mechanism, the hypothesis is rejected",
+        observable ? "the next disclosure" : "",
+        observable ? "the reported volume" : "",
+        observable
+          ? (timeBounded
+            ? "below the pre-registered threshold by 2026-06-30"
+            : "below the pre-registered threshold")
+          : ""
+      );
       return List.of(
-        new FalsificationCondition(
-          UUID.randomUUID(),
-          UUID.randomUUID(),
-          "the next disclosure",
-          observable ? "the reported volume" : "",
-          observable
-            ? (timeBounded ? "below the pre-registered threshold by 2026-06-30" : "below the pre-registered threshold")
-            : "",
-          "if the disclosure contradicts the mechanism, the hypothesis is rejected"
+        new Statement(
+          ClaimType.INFERENCE,
+          "if the disclosure contradicts the mechanism, the hypothesis is rejected",
+          reasoning,
+          0,
+          List.of(),
+          List.of(),
+          List.of(),
+          null,
+          null
         )
       );
     }
 
-    private List<Signal> signals(int level) {
+    private List<CorroboratingSignal> signals(int level) {
       if (level < 5) return List.of();
       return List.of(
-        new Signal(
-          UUID.randomUUID(),
+        new CorroboratingSignal(
+          ClaimType.INFERENCE,
           "a second buyer reports the same price",
-          "procurement records",
+          "Expected observable, not yet observed.",
+          0,
+          List.of(),
           UUID.randomUUID(),
+          "procurement records",
           "within two quarters",
-          SignalStatus.NOT_OBSERVED
+          "NOT_OBSERVED"
         )
       );
     }
 
-    private List<PlanItem> planItems(int d2) {
+    private List<Indicator> planItems(int d2) {
       if (!plan) return List.of();
       return List.of(
-        new PlanItem(
+        new Indicator(
           UUID.randomUUID(),
+          null,
           "is the volume response visible?",
+          "the company's next disclosure",
+          "HIGH",
+          ClaimType.INFERENCE,
+          "Supporting: volume rises | Contradicting: volume falls",
+          "decides whether the mechanism holds",
+          30,
+          List.of(),
           "the company's next disclosure",
           "volume rises with the documented elasticity",
           "volume falls or is unchanged",
-          PlanPriority.HIGH,
+          "HIGH",
           NOW.plusSeconds(86400L * 90),
-          UUID.randomUUID(),
-          null,
-          "verify the mechanism",
-          "decides whether the mechanism holds",
-          List.of(),
-          30
+          UUID.randomUUID()
         )
       );
     }
@@ -485,11 +510,11 @@ class ConfidenceRubricTest {
       int contextual,
       List<Fact> facts,
       List<Variable> variables,
-      List<Mechanism> mechanisms,
-      List<CounterArgument> counters,
-      List<FalsificationCondition> conditions,
-      List<Signal> signals,
-      List<PlanItem> plan,
+      List<CausalLink> mechanisms,
+      List<Statement> counters,
+      List<Statement> conditions,
+      List<CorroboratingSignal> signals,
+      List<Indicator> plan,
       int d2,
       int d5
     ) {
@@ -521,41 +546,43 @@ class ConfidenceRubricTest {
     private SourceAssessment source(int level) {
       return switch (level) {
         case 0 -> new SourceAssessment(
-          SourceType.UNKNOWN,
           "UNKNOWN",
           "UNKNOWN",
-          SourceClass.UNKNOWN,
-          Independence.SINGLE_SOURCE,
-          Completeness.PARTIAL,
+          null,
+          "UNKNOWN",
+          "SINGLE_SOURCE",
+          null,
+          "PARTIAL",
           List.of()
         );
         case 1 -> new SourceAssessment(
-          SourceType.NEWS_REPORT,
+          "NEWS_REPORT",
           "example.com",
-          "UNKNOWN",
-          SourceClass.SECONDARY,
-          Independence.SINGLE_SOURCE,
-          Completeness.PARTIAL,
+          null,
+          "SECONDARY",
+          "SINGLE_SOURCE",
+          null,
+          "PARTIAL",
           List.of()
         );
         case 2 -> new SourceAssessment(
-          SourceType.NEWS_REPORT,
+          "NEWS_REPORT",
           "example.com",
-          "2026-01-01T00:00:00Z",
-          SourceClass.SECONDARY,
-          Independence.SINGLE_SOURCE,
-          Completeness.COMPLETE,
+          NOW,
+          "SECONDARY",
+          "SINGLE_SOURCE",
+          null,
+          "COMPLETE",
           List.of()
         );
         default -> new SourceAssessment(
-          SourceType.PRIMARY_DOCUMENT,
+          "PRIMARY_DOCUMENT",
           "example.com",
-          "2026-01-01T00:00:00Z",
-          SourceClass.PRIMARY,
-          level >= 4
-            ? Independence.INDEPENDENT_SET
-            : Independence.SINGLE_SOURCE,
-          Completeness.COMPLETE,
+          NOW,
+          "PRIMARY",
+          level >= 4 ? "INDEPENDENT_SET" : "SINGLE_SOURCE",
+          null,
+          "COMPLETE",
           List.of()
         );
       };

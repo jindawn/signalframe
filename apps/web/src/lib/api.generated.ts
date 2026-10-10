@@ -228,12 +228,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hypotheses/{id}/transitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["transitionHypothesis"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hypotheses/{id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getHypothesisTimeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hypotheses/{id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["addEvidence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hypotheses/{id}/predictions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createPrediction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/predictions/due": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listDuePredictions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/predictions/{id}/verification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["verifyPrediction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /** @enum {string} */
-        ClaimType: "FACT" | "INFERENCE" | "HYPOTHESIS" | "PREDICTION";
+        ClaimType: "FACT" | "INFERENCE" | "HYPOTHESIS" | "PREDICTION" | "UNKNOWN";
         /** @enum {string} */
         DomainType: "TECH" | "AI" | "BUSINESS" | "FINANCE" | "MACRO" | "POLICY" | "GEOPOLITICS" | "REAL_ESTATE" | "ENERGY" | "CONSUMER" | "HEALTHCARE" | "EMPLOYMENT" | "OTHER";
         /** @enum {string} */
@@ -255,6 +351,12 @@ export interface components {
             reasoning: string;
             confidence: number;
             sourceRefs: components["schemas"]["SourceRef"][];
+            factRefs?: string[];
+            derivedFromRefs?: string[];
+            /** Format: uuid */
+            targetHypothesisRef?: string | null;
+            /** Format: uuid */
+            rivalsHypothesisRef?: string | null;
         };
         Fact: {
             /** Format: uuid */
@@ -264,6 +366,8 @@ export interface components {
             reasoning: string;
             confidence: number;
             sourceRefs: components["schemas"]["SourceRef"][];
+            /** @enum {string|null} */
+            verificationStatus?: "REPORTED" | "CORROBORATED" | "DISPUTED" | null;
         };
         Variable: {
             /** Format: uuid */
@@ -276,6 +380,11 @@ export interface components {
             reasoning: string;
             confidence: number;
             sourceRefs: components["schemas"]["SourceRef"][];
+            previousState?: string | null;
+            currentState?: string | null;
+            magnitude?: string | null;
+            whyItMatters?: string | null;
+            factRefs?: string[];
         };
         CausalLink: {
             /** Format: uuid */
@@ -287,6 +396,9 @@ export interface components {
             reasoning: string;
             confidence: number;
             sourceRefs: components["schemas"]["SourceRef"][];
+            /** @enum {string|null} */
+            supportLevel?: "SUPPORTED" | "PLAUSIBLE" | "SPECULATIVE" | null;
+            factRefs?: string[];
         };
         StakeholderImpact: {
             /** Format: uuid */
@@ -299,14 +411,14 @@ export interface components {
             reasoning: string;
             confidence: number;
             sourceRefs: components["schemas"]["SourceRef"][];
+            factRefs?: string[];
         };
         Hypothesis: {
             /** Format: uuid */
             id: string;
             title: string;
             description: string;
-            /** @enum {string} */
-            status: "OPEN" | "SUPPORTED" | "CHALLENGED" | "REJECTED" | "ARCHIVED";
+            status: components["schemas"]["HypothesisStatus"];
             confidenceReason: string;
             /** Format: date-time */
             createdAt: string;
@@ -317,6 +429,13 @@ export interface components {
             reasoning: string;
             confidence: number;
             sourceRefs: components["schemas"]["SourceRef"][];
+            supportingFactRefs?: string[];
+            supportingEvidenceRefs?: string[];
+            contradictingEvidenceRefs?: string[];
+            assumptions?: string[];
+            alternativeHypothesisRefs?: string[];
+            falsificationConditions?: components["schemas"]["Statement"][];
+            confidenceBand?: components["schemas"]["ConfidenceBand"];
         };
         Evidence: {
             /** Format: uuid */
@@ -331,6 +450,9 @@ export interface components {
             reason: string;
             /** Format: date-time */
             createdAt: string;
+            factRefs?: string[];
+            /** Format: uuid */
+            analysisId?: string | null;
         };
         Prediction: {
             /** Format: uuid */
@@ -343,8 +465,11 @@ export interface components {
             /** Format: date-time */
             expectedBy: string;
             /** @enum {string} */
-            status: "CONFIRMED" | "REJECTED" | "PARTIAL" | "UNRESOLVED";
+            status: "OPEN" | "CONFIRMED" | "REJECTED" | "PARTIAL" | "UNRESOLVED";
             verificationCriteria: string;
+            observable?: string | null;
+            whereToCheck?: string | null;
+            basisFactRefs?: string[];
         };
         Indicator: {
             /** Format: uuid */
@@ -359,12 +484,26 @@ export interface components {
             reasoning: string;
             confidence: number;
             sourceRefs: components["schemas"]["SourceRef"][];
+            whereToCheck?: string | null;
+            supportingResult?: string | null;
+            contradictingResult?: string | null;
+            /** @enum {string|null} */
+            priority?: "HIGH" | "MEDIUM" | "LOW" | "UNKNOWN" | null;
+            /** Format: date-time */
+            deadline?: string | null;
+            /** Format: uuid */
+            hypothesisRef?: string | null;
         };
         ConfidenceAssessment: {
             score: number;
             reason: string;
             /** @enum {boolean} */
             isProbability: false;
+            band?: components["schemas"]["ConfidenceBand"];
+            method?: components["schemas"]["ConfidenceMethod"];
+            rubricVersion?: string | null;
+            dimensions?: components["schemas"]["ConfidenceDimension"][];
+            advisoryScore?: number | null;
         };
         AnalysisResult: {
             summary: string;
@@ -378,13 +517,17 @@ export interface components {
             alternativeExplanations: components["schemas"]["Statement"][];
             counterArguments: components["schemas"]["Statement"][];
             falsificationConditions: components["schemas"]["Statement"][];
-            corroboratingSignals: components["schemas"]["Statement"][];
+            corroboratingSignals: components["schemas"]["CorroboratingSignal"][];
             verificationIndicators: components["schemas"]["Indicator"][];
             unknowns: components["schemas"]["Statement"][];
             confidenceAssessment: components["schemas"]["ConfidenceAssessment"];
             upcomingObservations: components["schemas"]["Statement"][];
             modifiesExistingHypotheses: boolean;
             demo: boolean;
+            sourceAssessment?: components["schemas"]["SourceAssessment"];
+            predictions?: components["schemas"]["Prediction"][];
+            protocolVersion?: string | null;
+            provenance?: components["schemas"]["Provenance"];
         };
         Source: {
             /** Format: uuid */
@@ -474,18 +617,22 @@ export interface components {
             /** Format: uuid */
             hypothesisId: string;
             /** @enum {string} */
-            eventType: "CREATED" | "EVIDENCE_ADDED" | "CONFIDENCE_CHANGED" | "PREDICTION_VERIFIED";
+            eventType: "CREATED" | "EVIDENCE_ADDED" | "CONFIDENCE_CHANGED" | "PREDICTION_VERIFIED" | "STATUS_CHANGED";
             previousConfidence: number | null;
             confidence: number;
             reason: string;
             /** Format: date-time */
             createdAt: string;
+            previousStatus?: components["schemas"]["HypothesisStatus"];
+            status?: components["schemas"]["HypothesisStatus"];
         };
         HypothesisDetail: {
             hypothesis: components["schemas"]["Hypothesis"];
             timeline: components["schemas"]["HypothesisEvent"][];
             evidence: components["schemas"]["Evidence"][];
             predictions: components["schemas"]["Prediction"][];
+            /** Format: int64 */
+            version: number;
         };
         ModelProfile: {
             provider: string;
@@ -536,6 +683,143 @@ export interface components {
             code: string;
             message: string;
             requestId: string;
+        };
+        SourceAssessment: {
+            /** @enum {string} */
+            sourceType: "PRIMARY_DOCUMENT" | "OFFICIAL_STATEMENT" | "COMPANY_DISCLOSURE" | "PRESS_RELEASE" | "NEWS_REPORT" | "WIRE_REPUBLICATION" | "OPINION_ANALYSIS" | "SOCIAL_POST" | "UNKNOWN";
+            publisher: string | null;
+            /** Format: date-time */
+            publishedAt: string | null;
+            /** @enum {string} */
+            primaryOrSecondary: "PRIMARY" | "SECONDARY" | "UNKNOWN";
+            /** @enum {string} */
+            independence: "SINGLE_SOURCE" | "SAME_PUBLISHER_DUPLICATE" | "INDEPENDENT_SET" | "UNKNOWN";
+            independenceKey?: string | null;
+            /** @enum {string} */
+            contentCompleteness: "COMPLETE" | "PARTIAL" | "TRUNCATED" | "METADATA_ONLY" | "UNKNOWN";
+            notes: string[];
+        };
+        /** @enum {string} */
+        ConfidenceBand: "VERY_LOW" | "LOW" | "MEDIUM" | "HIGH" | "VERY_HIGH";
+        /** @enum {string} */
+        ConfidenceMethod: "MODEL_JUDGMENT" | "RUBRIC";
+        /** @enum {string} */
+        HypothesisStatus: "OPEN" | "STRENGTHENING" | "WEAKENING" | "CONFIRMED" | "REJECTED" | "UNRESOLVED" | "SUPPORTED" | "CHALLENGED" | "ARCHIVED";
+        ConfidenceDimension: {
+            /** @enum {string} */
+            dimension: "D1_SOURCE_QUALITY" | "D2_EVIDENCE_DIRECTNESS" | "D3_INDEPENDENT_CORROBORATION" | "D4_MECHANISM_SUPPORT" | "D5_COUNTER_EVIDENCE_RESILIENCE";
+            level: number;
+            points: number;
+            note?: string | null;
+        };
+        CorroboratingSignal: {
+            type: components["schemas"]["ClaimType"];
+            statement: string;
+            reasoning: string;
+            confidence: number;
+            sourceRefs: components["schemas"]["SourceRef"][];
+            /** Format: uuid */
+            hypothesisRef: string;
+            whereToCheck: string;
+            window?: string | null;
+            /** @enum {string} */
+            status: "NOT_OBSERVED" | "OBSERVED" | "NOT_FOUND";
+        };
+        Provenance: {
+            protocolVersion?: string | null;
+            domainStrategyId?: string | null;
+            rubricVersion?: string | null;
+            promptVersions?: string[];
+            modelRunIds?: string[];
+        };
+        /** @enum {string} */
+        HypothesisTransitionCause: "EVIDENCE_ADDED" | "EVIDENCE_CHANGED" | "PREDICTION_VERIFIED" | "FALSIFICATION_OBSERVED" | "DEADLINE_PASSED";
+        /** @enum {string} */
+        VerificationOutcome: "CONFIRMED" | "PARTIAL" | "REJECTED" | "UNRESOLVED";
+        HypothesisTransitionCommand: {
+            /** Format: uuid */
+            operationId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+            cause: components["schemas"]["HypothesisTransitionCause"];
+            reason: string;
+            /** Format: uuid */
+            evidenceRef?: string | null;
+            /** Format: uuid */
+            predictionRef?: string | null;
+            verificationOutcome?: components["schemas"]["VerificationOutcome"];
+        };
+        HypothesisTransitionResult: {
+            /** Format: uuid */
+            operationId: string;
+            /** Format: uuid */
+            hypothesisId: string;
+            applied: boolean;
+            /** Format: int64 */
+            previousVersion: number;
+            /** Format: int64 */
+            version: number;
+            previousStatus: components["schemas"]["HypothesisStatus"];
+            status: components["schemas"]["HypothesisStatus"];
+            previousConfidence: number;
+            confidence: number;
+            confidenceBand?: components["schemas"]["ConfidenceBand"];
+            rubricVersion?: string | null;
+            /** Format: uuid */
+            eventId: string;
+            /** Format: date-time */
+            occurredAt: string;
+        };
+        HypothesisTimeline: {
+            /** Format: uuid */
+            hypothesisId: string;
+            /** Format: int64 */
+            version: number;
+            status: components["schemas"]["HypothesisStatus"];
+            confidence: number;
+            items: components["schemas"]["HypothesisEvent"][];
+        };
+        EvidenceCreateRequest: {
+            /** Format: uuid */
+            sourceId: string;
+            /** @enum {string} */
+            stance: "SUPPORTS" | "CONTRADICTS" | "NEUTRAL";
+            strength: number;
+            reason: string;
+            factRefs?: string[];
+            /** Format: uuid */
+            analysisId?: string | null;
+        };
+        PredictionCreateRequest: {
+            statement: string;
+            observable: string;
+            /** Format: date-time */
+            expectedBy: string;
+            verificationCriteria: string;
+            whereToCheck: string;
+            basisFactRefs?: string[];
+        };
+        PredictionVerificationCommand: {
+            /** Format: uuid */
+            operationId: string;
+            result: components["schemas"]["VerificationOutcome"];
+            reason: string;
+            /** Format: uuid */
+            evidenceRef?: string | null;
+            /** Format: date-time */
+            verifiedAt?: string | null;
+        };
+        PredictionVerificationResult: {
+            prediction: components["schemas"]["Prediction"];
+            applied: boolean;
+            /** Format: uuid */
+            verificationId: string;
+            hypothesisTransition: components["schemas"]["HypothesisTransitionResult"];
+        };
+        DuePredictions: {
+            /** Format: date-time */
+            asOf: string;
+            predictions: components["schemas"]["Prediction"][];
         };
     };
     responses: never;
@@ -1403,6 +1687,404 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    transitionHypothesis: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HypothesisTransitionCommand"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HypothesisTransitionResult"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unprocessable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getHypothesisTimeline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HypothesisTimeline"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    addEvidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Evidence"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unprocessable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    createPrediction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PredictionCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Prediction"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unprocessable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listDuePredictions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuePredictions"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    verifyPrediction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PredictionVerificationCommand"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PredictionVerificationResult"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unprocessable */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
