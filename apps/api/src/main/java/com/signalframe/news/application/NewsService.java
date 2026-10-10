@@ -75,7 +75,7 @@ public class NewsService {
       // Nothing usable was produced: stay NEEDS_TEXT with an actionable message.
       text = "";
       status = STATUS_NEEDS_TEXT;
-      message = content.message();
+      message = reasonMessage(content);
     } else {
       // URL used nothing, but the caller did supply text: keep it analyzable and
       // record why the URL was not used (never drop the failure category).
@@ -132,16 +132,35 @@ public class NewsService {
     }
   }
 
+  /**
+   * Persisted diagnostic for a URL that produced no usable text.
+   *
+   * <p>The message must always start with the machine-readable reason code (see
+   * {@link IngestionFailure#persistedMessage()}); a producer that supplied no
+   * message degrades to the generic extraction failure instead of an empty
+   * diagnostic, so the UI never has to guess why the URL was unusable.
+   */
+  private static String reasonMessage(NormalizedContent content) {
+    String message = content.message();
+    return message == null || message.isBlank()
+      ? IngestionFailure.EXTRACTION_FAILED.persistedMessage()
+      : message;
+  }
+
+  /**
+   * Message for a URL that was fetched but not used because the caller pasted
+   * text. Same leading reason code, different next step: the text is kept.
+   */
   private static String unusedUrlMessage(NormalizedContent content) {
     IngestionFailure failure = content.failure() == null
       ? IngestionFailure.EXTRACTION_FAILED
       : content.failure();
     return (
-      "URL 未使用（" +
       failure.code() +
-      " · " +
+      IngestionFailure.SEPARATOR +
+      "URL 未使用：" +
       failure.userMessage() +
-      "）· 已保留你粘贴的正文并继续分析。"
+      " 已保留你粘贴的正文并继续分析。"
     );
   }
 

@@ -1,15 +1,19 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type Schema } from "@/lib/api";
 import { safeError, throwIfFailed } from "@/lib/errors";
+import {
+  ingestionCategoryLabel,
+  ingestionDiagnostic,
+  unusedUrlNotice,
+} from "@/lib/ingestion";
 import { extractionLabel } from "@/lib/labels";
 import { terminal } from "@/lib/progress";
 import { AnalysisView } from "./AnalysisView";
 import { JobProgress } from "./JobProgress";
 
 const ACTIVE_JOB_KEY = "signalframe.activeJob";
-const RECOVERABLE_URL_TEXT = "无法可靠提取该网页，可粘贴正文继续分析。";
 
 type Notice = { tone: "error" | "info"; text: string };
 type FieldErrors = { url?: string; text?: string };
@@ -35,6 +39,15 @@ export function Inbox() {
   const [news, setNews] = useState<Schema<"NewsItem"> | null>(null);
   const [analysis, setAnalysis] = useState<Schema<"Analysis"> | null>(null);
   const [runs, setRuns] = useState<Schema<"ModelRun">[]>([]);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+
+  /** Reason-coded recovery state, derived from the persisted source. */
+  const recovery =
+    news && news.source.extractionStatus === "NEEDS_TEXT"
+      ? ingestionDiagnostic(news.source.message)
+      : null;
+  /** Set when a URL was unusable but pasted text kept the source analyzable. */
+  const unusedUrl = news ? unusedUrlNotice(news.source.message) : null;
 
   useEffect(() => {
     // Deferred so the restore runs after hydration and does not cascade renders.
@@ -161,6 +174,18 @@ export function Inbox() {
       });
       return;
     }
+    await createAndAnalyze(url, text);
+  }
+
+  /**
+   * One source from URL and/or pasted text, then the analysis job.
+   *
+   * A URL failure never aborts the flow: it stays on the source as a
+   * reason-coded message. Without pasted text that becomes a recovery state
+   * with the paste-text fallback; with pasted text the failure is recorded and
+   * analysis continues on the paste.
+   */
+  async function createAndAnalyze(sourceUrl: string, sourceText: string) {
     window.localStorage.removeItem(ACTIVE_JOB_KEY);
     setNotice(null);
     setAnalysis(null);
@@ -172,13 +197,15 @@ export function Inbox() {
     try {
       const item = throwIfFailed(
         await api.POST("/api/v1/news", {
-          body: { url: url.trim() || null, text: text.trim() || null },
+          body: {
+            url: sourceUrl.trim() || null,
+            text: sourceText.trim() || null,
+          },
         }),
       );
       setNews(item);
       if (item.source.extractionStatus === "NEEDS_TEXT") {
         setBusy(false);
-        setNotice({ tone: "error", text: RECOVERABLE_URL_TEXT });
         return;
       }
       const created = throwIfFailed(
@@ -196,6 +223,15 @@ export function Inbox() {
         text: safeError(error, "提交失败，请稍后重试。"),
       });
     }
+  }
+
+  /** Paste-text fallback: send focus to the body field the user must fill in. */
+  function pasteInstead() {
+    textRef.current?.focus();
+    setNotice({
+      tone: "info",
+      text: "粘贴正文后再次点击 Analyze，会用正文继续分析。",
+    });
   }
 
   async function retry() {
@@ -274,6 +310,7 @@ export function Inbox() {
           <textarea
             id="text"
             name="text"
+            ref={textRef}
             value={text}
             onChange={(event) => setText(event.target.value)}
             placeholder="粘贴新闻正文；无法提取的网页可通过正文继续分析。"
@@ -306,6 +343,42 @@ export function Inbox() {
         </p>
       )}
 
+      {recovery && (
+        <section className="panel" role="alert">
+          <h2>网页提取失败</h2>
+          <div className="diagnostic">
+            <p className="diagnostic-head">
+              <span className="status-badge">
+                {recovery.code && (
+                  <span className="status-code">{recovery.code}</span>
+                )}
+                <span className="status-label">
+                  {ingestionCategoryLabel[recovery.category]}
+                </span>
+              </span>
+              <strong>{recovery.title}</strong>
+            </p>
+            <p className="muted">{recovery.detail}</p>
+            <p className="hint">{recovery.action}</p>
+          </div>
+          <div className="action-bar">
+            <button type="button" onClick={pasteInstead}>
+              粘贴正文继续分析
+            </button>
+            {recovery.retryable && (
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => void createAndAnalyze(url, text)}
+                disabled={busy}
+              >
+                重试提取 URL
+              </button>
+            )}
+          </div>
+        </section>
+      )}
+
       {busy && !job && (
         <section className="panel" aria-label="提交状态">
           <p className="muted" aria-live="polite">
@@ -332,6 +405,7 @@ export function Inbox() {
           <summary>
             已捕获的输入 · {extractionLabel[news.source.extractionStatus]}
           </summary>
+          {unusedUrl && <p className="notice">{unusedUrl}</p>}
           {news.source.url && (
             <p className="breakable">
               <a href={news.source.url} target="_blank" rel="noreferrer">

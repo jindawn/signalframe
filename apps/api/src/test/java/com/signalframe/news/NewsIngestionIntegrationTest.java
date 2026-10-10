@@ -160,7 +160,10 @@ class NewsIngestionIntegrationTest {
 
     assertEquals("NEEDS_TEXT", needsText.source().extractionStatus());
     assertTrue(needsText.source().text().isEmpty());
-    assertTrue(needsText.source().message().contains("ACCESS_BLOCKED"));
+    assertTrue(
+      needsText.source().message().startsWith("ACCESS_BLOCKED · "),
+      needsText.source().message()
+    );
     assertTrue(needsText.source().message().contains("粘贴正文"));
     assertEquals(
       409,
@@ -192,7 +195,10 @@ class NewsIngestionIntegrationTest {
     NewsItem item = json.read(created.body(), NewsItem.class);
 
     assertEquals("NEEDS_TEXT", item.source().extractionStatus());
-    assertTrue(item.source().message().contains("REDIRECT_TO_UNSAFE_DESTINATION"));
+    assertTrue(
+      item.source().message().startsWith("REDIRECT_TO_UNSAFE_DESTINATION · "),
+      item.source().message()
+    );
     assertTrue(item.source().message().contains("粘贴正文"));
   }
 
@@ -206,8 +212,21 @@ class NewsIngestionIntegrationTest {
     NewsItem item = json.read(created.body(), NewsItem.class);
 
     assertEquals("NEEDS_TEXT", item.source().extractionStatus());
-    assertTrue(item.source().message().contains("UNSAFE_DESTINATION"));
+    assertTrue(
+      item.source().message().startsWith("UNSAFE_DESTINATION · "),
+      item.source().message()
+    );
+    assertEquals(
+      com.signalframe.news.domain.IngestionFailure.UNSAFE_DESTINATION,
+      com.signalframe.news.domain.IngestionFailure.parseCode(
+        item.source().message()
+      ).orElseThrow()
+    );
     assertFalse(item.source().message().contains("Exception"));
+    assertFalse(
+      item.source().message().contains("10.1.2.3"),
+      "the refused address itself must not be echoed back"
+    );
   }
 
   @Test
