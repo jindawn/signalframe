@@ -184,6 +184,41 @@ public final class PipelineFixtures {
     );
   }
 
+  /**
+   * The two-stage synthesis service for the offline pipeline fixture. Its two
+   * stage clients use the same stub gateway and recording repository as every
+   * other stage, so a two-stage run produces two separately audited
+   * {@code ModelRun} rows and no new test seam.
+   */
+  public static TwoStageSynthesisService twoStageService(
+    ModelGateway gateway,
+    RecordingRuns runs,
+    JsonCodec json,
+    PromptLibrary prompts,
+    StageResponseReader reader,
+    List<DomainAnalysisStrategy> strategies,
+    AnalysisPipelineMode mode
+  ) {
+    var policy = new ModelRetryPolicy(2, 1, Duration.ZERO);
+    return new TwoStageSynthesisService(
+      router(),
+      gateway,
+      runs,
+      reader,
+      prompts,
+      json,
+      gateA(json),
+      ConfidenceRubric.deterministic(),
+      strategies,
+      2,
+      1,
+      0L,
+      2,
+      1,
+      0L
+    );
+  }
+
   /** Every protocol stage, in the pipeline's fixed order. */
   public static List<ProtocolStage> stages(
     AnalysisPipelineMode mode,
@@ -206,7 +241,8 @@ public final class PipelineFixtures {
         json,
         prompts,
         strategies,
-        mode
+        mode,
+        twoStageService(gateway, runs, json, prompts, reader, strategies, mode)
       ),
       new FactExtractionStage(client, prompts, reader, stagePrompts, mode),
       new DomainClassificationStage(),

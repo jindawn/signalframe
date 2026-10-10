@@ -83,6 +83,47 @@ public final class AnalysisOutputSchema {
     }
   }
 
+  /**
+   * The projection for roots other than {@code AnalysisResult}: the same
+   * deterministic closure and compaction, without the {@code allOf} wrapper,
+   * which only makes sense when the reply is the root object itself.
+   *
+   * <p>Used by the two-stage synthesis path so each stage prompt carries a schema
+   * that describes only the artifacts that stage may produce — still derived from
+   * the one generated contract, so a contract change cannot leave a stage schema
+   * stale.
+   */
+  public static String renderFor(JsonCodec json, Set<String> roots) {
+    try {
+      return project(json, raw(), roots);
+    } catch (RuntimeException malformed) {
+      return raw();
+    }
+  }
+
+  static String project(
+    JsonCodec json,
+    String rawSchema,
+    Set<String> roots
+  ) {
+    var document = json.read(rawSchema, Map.class);
+    var components = asMap(document.get("components"));
+    var schemas = asMap(components.get("schemas"));
+    var reachable = new LinkedHashSet<String>();
+    for (var root : roots) reachable.addAll(closure(schemas, root));
+
+    // Preserve the resource's own component order so the prompt is stable.
+    var kept = new LinkedHashMap<String, Object>();
+    for (var entry : schemas.entrySet()) if (
+      reachable.contains(entry.getKey())
+    ) kept.put(entry.getKey(), entry.getValue());
+
+    var projected = new LinkedHashMap<String, Object>();
+    projected.put("$schema", document.get("$schema"));
+    projected.put("components", Map.of("schemas", kept));
+    return json.write(projected);
+  }
+
   static String project(JsonCodec json, String rawSchema) {
     var document = json.read(rawSchema, Map.class);
     var components = asMap(document.get("components"));

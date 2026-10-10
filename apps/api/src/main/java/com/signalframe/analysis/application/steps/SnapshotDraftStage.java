@@ -37,19 +37,22 @@ public class SnapshotDraftStage implements ProtocolStage {
   private final PromptLibrary promptLibrary;
   private final List<DomainAnalysisStrategy> strategies;
   private final AnalysisPipelineMode pipelineMode;
+  private final TwoStageSynthesisService twoStage;
 
   public SnapshotDraftStage(
     ModelAnalysisService model,
     JsonCodec json,
     PromptLibrary promptLibrary,
     List<DomainAnalysisStrategy> strategies,
-    AnalysisPipelineMode pipelineMode
+    AnalysisPipelineMode pipelineMode,
+    TwoStageSynthesisService twoStage
   ) {
     this.model = model;
     this.json = json;
     this.promptLibrary = promptLibrary;
     this.strategies = List.copyOf(strategies);
     this.pipelineMode = pipelineMode;
+    this.twoStage = twoStage;
   }
 
   @Override
@@ -60,6 +63,38 @@ public class SnapshotDraftStage implements ProtocolStage {
       in.news().title()
     );
     var strategy = DomainStrategyResolver.resolve(domain, strategies);
+
+    // TWO_STAGE obtains the same draft through two smaller, separately validated
+    // model contracts; everything after this stage is unchanged, so the protocol
+    // gates, the rubric, the snapshot write and the audit are the same ones.
+    if (pipelineMode.twoStage()) {
+      var twoStageRun = twoStage.analyze(
+        in.jobId(),
+        in.correlationId(),
+        in,
+        strategy.guidance()
+      );
+      var snapshot = twoStageRun.snapshot();
+      if (snapshot.summary() == null || snapshot.summary().isBlank()) {
+        throw new StageFailure(
+          NAME,
+          StageFailure.Kind.MALFORMED_OUTPUT,
+          "the assembled snapshot carries no summary"
+        );
+      }
+      // Both stage prompt versions travel as separate executed stages, so the
+      // snapshot's provenance records what actually produced it (PR-06/PR-15).
+      return in
+        .withDraftSnapshot(json.write(snapshot))
+        .withSummary(snapshot.summary())
+        .withDemo(Boolean.TRUE.equals(snapshot.demo()))
+        .executed(TwoStageSynthesisService.FACTS_STAGE, twoStageRun.factsPromptVersion())
+        .executed(
+          TwoStageSynthesisService.REASONING_STAGE,
+          twoStageRun.reasoningPromptVersion()
+        );
+    }
+
     var draft = model.synthesize(
       in.jobId(),
       in.correlationId(),

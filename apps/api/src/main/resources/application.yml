@@ -46,6 +46,21 @@ ai:
     max-attempts: ${AI_RETRY_MAX_ATTEMPTS:2}
     max-repair-attempts: ${AI_RETRY_MAX_REPAIR_ATTEMPTS:1}
     backoff-ms: ${AI_RETRY_BACKOFF_MS:250}
+  # Two-stage synthesis (opt-in via analysis.pipeline.mode=two-stage). Each stage
+  # has its own bounded retry/repair budget, so one stage can stay single-shot
+  # while the other is allowed a repair. Budgets (max-tokens, timeout) come from
+  # the profile each stage routes to by purpose: FACT_EXTRACTION for stage 1 and
+  # SYNTHESIS for stage 2, both configurable in ai.routes. Prompt versions live in
+  # resources/prompts/two-stage-facts and two-stage-reasoning.
+  two-stage:
+    facts:
+      max-attempts: ${AI_TWO_STAGE_FACTS_MAX_ATTEMPTS:${AI_RETRY_MAX_ATTEMPTS:2}}
+      max-repair-attempts: ${AI_TWO_STAGE_FACTS_MAX_REPAIR_ATTEMPTS:${AI_RETRY_MAX_REPAIR_ATTEMPTS:1}}
+      backoff-ms: ${AI_TWO_STAGE_FACTS_BACKOFF_MS:${AI_RETRY_BACKOFF_MS:250}}
+    reasoning:
+      max-attempts: ${AI_TWO_STAGE_REASONING_MAX_ATTEMPTS:${AI_RETRY_MAX_ATTEMPTS:2}}
+      max-repair-attempts: ${AI_TWO_STAGE_REASONING_MAX_REPAIR_ATTEMPTS:${AI_RETRY_MAX_REPAIR_ATTEMPTS:1}}
+      backoff-ms: ${AI_TWO_STAGE_REASONING_BACKOFF_MS:${AI_RETRY_BACKOFF_MS:250}}
   routes:
     FAST_ANALYSIS: analysis.fast
     DEEP_ANALYSIS: analysis.deep

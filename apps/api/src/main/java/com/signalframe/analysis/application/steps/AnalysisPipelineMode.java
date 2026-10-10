@@ -37,6 +37,12 @@ public class AnalysisPipelineMode {
   public enum Mode {
     DRAFT,
     STAGED,
+    /**
+     * Two smaller model contracts — facts with provenance, then analytical
+     * reasoning over those fact ids — assembled deterministically by
+     * {@link TwoStageSynthesisService}. Opt-in; DRAFT stays the default.
+     */
+    TWO_STAGE,
   }
 
   public static final String PROPERTY = "analysis.pipeline.mode";
@@ -63,13 +69,17 @@ public class AnalysisPipelineMode {
     return mode == Mode.STAGED;
   }
 
+  public boolean twoStage() {
+    return mode == Mode.TWO_STAGE;
+  }
+
   private static Mode parse(String raw) {
     if (raw == null || raw.isBlank()) return Mode.DRAFT;
     try {
-      return Mode.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+      return Mode.valueOf(raw.trim().toUpperCase(Locale.ROOT).replace('-', '_'));
     } catch (IllegalArgumentException unknown) {
       throw new IllegalStateException(
-        PROPERTY + " must be 'draft' or 'staged', got: " + raw
+        PROPERTY + " must be 'draft', 'staged' or 'two-stage', got: " + raw
       );
     }
   }
