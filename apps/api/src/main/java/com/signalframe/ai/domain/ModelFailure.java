@@ -22,6 +22,12 @@ public enum ModelFailure {
   PERMISSION_DENIED(false),
   /** The provider rejected the request as malformed. */
   INVALID_REQUEST(false),
+  /**
+   * The credential is valid but its account has no remaining quota or balance
+   * (HTTP 402 or equivalent). Retrying cannot succeed: the operator has to fix
+   * billing or quota.
+   */
+  QUOTA_EXCEEDED(false),
   /** The configured model identifier does not exist at the provider. */
   MODEL_NOT_FOUND(false),
   /** The selected profile requires a capability the adapter does not offer. */

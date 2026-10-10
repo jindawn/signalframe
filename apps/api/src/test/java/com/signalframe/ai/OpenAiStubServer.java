@@ -79,6 +79,42 @@ final class OpenAiStubServer implements AutoCloseable {
     );
   }
 
+  /**
+   * A completion whose body carries no usage at all, like some self-hosted
+   * OpenAI-compatible servers. The runtime must report unknown, not zeros.
+   */
+  static String completionWithoutUsage(String content) {
+    return (
+      "{\"id\":\"chatcmpl-stub\",\"object\":\"chat.completion\",\"created\":1," +
+      "\"model\":\"stub\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\"," +
+      "\"content\":" +
+      AiTestFixtures.quote(content) +
+      "},\"finish_reason\":\"stop\"}]}"
+    );
+  }
+
+  /**
+   * A completion whose usage omits {@code total_tokens}. Real gateways do this,
+   * and the OpenAI client refuses to decode such a body.
+   */
+  static String completionWithoutTotalUsage(
+    String content,
+    int promptTokens,
+    int completionTokens
+  ) {
+    return (
+      "{\"id\":\"chatcmpl-stub\",\"object\":\"chat.completion\",\"created\":1," +
+      "\"model\":\"stub\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\"," +
+      "\"content\":" +
+      AiTestFixtures.quote(content) +
+      "},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":" +
+      promptTokens +
+      ",\"completion_tokens\":" +
+      completionTokens +
+      "}}"
+    );
+  }
+
   static String error(int status, String message) {
     return (
       "{\"error\":{\"message\":" +

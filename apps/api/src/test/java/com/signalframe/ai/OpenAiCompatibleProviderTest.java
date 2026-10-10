@@ -150,6 +150,10 @@ class OpenAiCompatibleProviderTest {
       failureFor(503, true).failure()
     );
     assertEquals(
+      ModelFailure.QUOTA_EXCEEDED,
+      failureFor(402, false).failure()
+    );
+    assertEquals(
       ModelFailure.INVALID_REQUEST,
       failureFor(400, false).failure()
     );
@@ -157,6 +161,123 @@ class OpenAiCompatibleProviderTest {
       ModelFailure.PERMISSION_DENIED,
       failureFor(403, false).failure()
     );
+  }
+
+  @Test
+  void unknownModelIsReportedAsModelNotFound() throws Exception {
+    assertEquals(
+      ModelFailure.MODEL_NOT_FOUND,
+      failureFor(404, false).failure()
+    );
+  }
+
+  /**
+   * A provider that reports no usage leaves every token count and the cost
+   * unknown. The SDK renders a missing usage record as zeros, so this pins the
+   * rule that unknown usage must stay null and must never be fabricated.
+   */
+  @Test
+  void providerReportingNoUsageLeavesUsageUnknown() throws Exception {
+    try (
+      var stub = new OpenAiStubServer(body ->
+        OpenAiStubServer.Reply.ok(
+          OpenAiStubServer.completionWithoutUsage("{\"ok\":true}")
+        )
+      )
+    ) {
+      var profile = AiTestFixtures.liveProfile(
+        "stub-model-a",
+        stub.baseUrl(),
+        20
+      );
+      var response = gateway.call(
+        AiTestFixtures.request(profile, AiTestFixtures.news()),
+        credentials()
+      );
+      assertEquals("{\"ok\":true}", response.content());
+      assertNull(
+        response.usage().inputTokens(),
+        "unknown input tokens must not be reported as zero"
+      );
+      assertNull(
+        response.usage().outputTokens(),
+        "unknown output tokens must not be reported as zero"
+      );
+      assertNull(
+        response.usage().totalTokens(),
+        "unknown total tokens must not be reported as zero"
+      );
+      assertNull(response.usage().estimatedCost());
+    }
+  }
+
+  /**
+   * Known interoperability limit: the OpenAI client rejects a usage object that
+   * omits {@code total_tokens}, so such a body is classified as undecodable and
+   * the whole call fails even though the completion text was fine. The
+   * classification is deliberate and stable; see the real-model runbook.
+   */
+  @Test
+  void providerOmittingTotalTokensIsRejectedAsAnUndecodableBody()
+    throws Exception {
+    try (
+      var stub = new OpenAiStubServer(body ->
+        OpenAiStubServer.Reply.ok(
+          OpenAiStubServer.completionWithoutTotalUsage("{\"ok\":true}", 5, 3)
+        )
+      )
+    ) {
+      var profile = AiTestFixtures.liveProfile(
+        "stub-model-a",
+        stub.baseUrl(),
+        20
+      );
+      var failure = assertThrows(ModelInvocationException.class, () ->
+        gateway.call(AiTestFixtures.request(profile, AiTestFixtures.news()), credentials())
+      );
+      assertEquals(ModelFailure.PROVIDER_RESPONSE_INVALID, failure.failure());
+      assertFalse(failure.retryable());
+    }
+  }
+
+  /** The adapter performs exactly one transport call; retry belongs to the caller. */
+  @Test
+  void retryableServerErrorIsAttemptedOnlyOnceInsideTheAdapter()
+    throws Exception {
+    try (
+      var stub = new OpenAiStubServer(body ->
+        OpenAiStubServer.Reply.status(503, OpenAiStubServer.error(503, "down"))
+      )
+    ) {
+      var profile = AiTestFixtures.liveProfile(
+        "stub-model-a",
+        stub.baseUrl(),
+        20
+      );
+      assertThrows(ModelInvocationException.class, () ->
+        gateway.call(AiTestFixtures.request(profile, AiTestFixtures.news()), credentials())
+      );
+      assertEquals(
+        1,
+        stub.bodies().size(),
+        "the provider SDK retry must stay disabled so every attempt is audited"
+      );
+    }
+  }
+
+  @Test
+  void unreachableEndpointIsATransportFailure() throws Exception {
+    final String closed;
+    try (var socket = new java.net.ServerSocket(0)) {
+      closed = "http://127.0.0.1:" + socket.getLocalPort();
+    }
+    var profile = AiTestFixtures.liveProfile("stub-model-a", closed, 5);
+    var failure = assertThrows(ModelInvocationException.class, () ->
+      gateway.call(AiTestFixtures.request(profile, AiTestFixtures.news()), credentials())
+    );
+    assertEquals(ModelFailure.TRANSPORT, failure.failure());
+    assertTrue(failure.retryable());
+    assertFalse(failure.getMessage().contains(credentials().value()));
   }
 
   private ModelInvocationException failureFor(int status, boolean retryable)

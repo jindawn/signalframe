@@ -93,7 +93,19 @@ AI_DEFAULT_PROFILE=analysis.fast
 
 Key 仅填到本地被忽略的 .env 或环境变量。**不要复制真实 Key 到代码/提交/日志。** 重启 API 后生效。换模型只改 provider、model、baseUrl 和环境 Key；业务代码只选择 ModelPurpose。analysis.deep 使用 AI_DEEP_*。Purpose→Profile 路由及 temperature/maxTokens/timeout/structuredOutput/toolCalling/enabled 在 application.yml，映射到 ConfigurationProperties。
 
-GET settings/model-profiles 返回配置和有效 MOCK/LIVE/DISABLED 状态，不返回密钥。PUT settings/model-profiles/{profile} 可替换已有 Profile，**仅当前进程有效**；持久配置仍用 YAML/env。关闭所有已路由 Profile 时分析会失败，启用至少一个。工具调用尚未实现，true 配置会被明确拒绝。结构化输出开启时适配器请求 JSON object，并始终做本地类型/schema/provenance 校验。解析/校验失败重试一次，每次尝试独立审计。真实适配器未经付费模型端到端测试；Mock 不需要 Key。Token 未知和成本未估算采用 null。
+GET settings/model-profiles 返回配置和有效 MOCK/LIVE/DISABLED 状态，不返回密钥。PUT settings/model-profiles/{profile} 可替换已有 Profile，**仅当前进程有效**；持久配置仍用 YAML/env。关闭所有已路由 Profile 时分析会失败，启用至少一个。工具调用尚未实现，true 配置会被明确拒绝。结构化输出开启时适配器请求 JSON object，并始终做本地类型/schema/provenance 校验。解析/校验失败重试一次，每次尝试独立审计。Mock 不需要 Key。Token 未知和成本未估算采用 null，绝不伪造为 0。
+
+真实 Provider 链路已用真实 OpenAI-compatible 服务端到端验证（本地 Ollama，无需付费 Key）：路由、结构化输出、超时、重试、失败分类与 ModelRun 审计均可复现。配置步骤、失败分类表、ModelRun 字段与已知限制见 [真实模型 E2E 运行手册](docs/ai-runtime/REAL_MODEL_E2E.md)。付费 Provider 的完整分析链路仍需具备 schema 能力的模型，未在此机器上验证。
+
+opt-in 真实验证（不设 `AI_REAL_MODEL_E2E` 时整套 SKIP，CI 不失败）：
+
+```sh
+AI_REAL_MODEL_E2E=true AI_FAST_PROVIDER=openai-compatible \
+AI_FAST_MODEL=<model-id> AI_FAST_BASE_URL=<api-root> AI_FAST_API_KEY=<secret> \
+./scripts/mvn.sh -B -f apps/api/pom.xml test -Dtest=RealModelEndToEndTest
+```
+
+注意：Profile 配置了真实 Provider 但 Key 缺失或为空时会静默回退到 Mock；先用 settings/model-profiles 确认 `LIVE`，并核对 ModelRun 记录的是真实 provider/model 而不是 `mock`/`mock-v1`。
 
 ## Local operating boundaries
 

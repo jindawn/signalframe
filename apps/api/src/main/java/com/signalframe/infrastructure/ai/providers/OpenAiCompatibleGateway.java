@@ -4,6 +4,7 @@ import com.signalframe.ai.domain.*;
 import com.signalframe.contract.ModelProfile;
 import java.time.Duration;
 import java.util.Set;
+import org.springframework.ai.chat.metadata.EmptyUsage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.*;
@@ -107,14 +108,35 @@ public class OpenAiCompatibleGateway implements ModelProviderAdapter {
       : response.getMetadata().getUsage();
     return new ModelResponse(
       text,
-      new ModelUsage(
-        tokens(usage == null ? null : usage.getPromptTokens()),
-        tokens(usage == null ? null : usage.getCompletionTokens()),
-        tokens(usage == null ? null : usage.getTotalTokens()),
-        null
-      ),
+      toUsage(usage),
       PROVIDER,
       profile.model()
+    );
+  }
+
+  /**
+   * Maps reported usage, preserving "unknown" as unknown.
+   *
+   * <p>A provider that does not report usage at all leaves the SDK metadata
+   * empty; the SDK renders that as zeros. Unknown token counts and costs must
+   * stay null and must never be fabricated into zeros, so an empty usage record
+   * is reported as null on every field. A provider that explicitly reports
+   * zero tokens is still reported as zero.
+   */
+  private static ModelUsage toUsage(
+    org.springframework.ai.chat.metadata.Usage usage
+  ) {
+    if (usage == null || usage instanceof EmptyUsage) return new ModelUsage(
+      null,
+      null,
+      null,
+      null
+    );
+    return new ModelUsage(
+      tokens(usage.getPromptTokens()),
+      tokens(usage.getCompletionTokens()),
+      tokens(usage.getTotalTokens()),
+      null
     );
   }
 
