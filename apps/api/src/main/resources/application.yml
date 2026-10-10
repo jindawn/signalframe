@@ -27,6 +27,16 @@ logging:
       console: ecs
 ai:
   default-profile: ${AI_DEFAULT_PROFILE:analysis.fast}
+  # Client identity and session correlation. The User-Agent is this runtime's own
+  # name; it is never a third-party client's. The session header is what an
+  # OpenAI-compatible gateway uses to attribute retries and repairs of one
+  # analysis to one session; its value is derived from the job id, so it is stable
+  # per analysis and opaque. Set AI_SESSION_HEADER_ENABLED=false for a provider
+  # that does not want it.
+  client:
+    user-agent: ${AI_CLIENT_USER_AGENT:SignalFrame/0.1.0}
+    session-header-name: ${AI_SESSION_HEADER_NAME:x-opencode-session}
+    session-header-enabled: ${AI_SESSION_HEADER_ENABLED:true}
   routes:
     FAST_ANALYSIS: analysis.fast
     DEEP_ANALYSIS: analysis.deep
@@ -41,7 +51,13 @@ ai:
       base-url: ${AI_FAST_BASE_URL:https://api.deepseek.com}
       api-key-env: AI_FAST_API_KEY
       temperature: 0.2
-      max-tokens: 4096
+      # A reasoning model spends part of this ceiling on reasoning tokens before
+      # it emits any JSON, and completion_tokens counts both. The reference
+      # snapshot is ~1.2k estimated tokens, so 4096 left too little room for a
+      # reasoning model plus a verbose real snapshot: the reply would be cut off
+      # mid-object and rejected as schema-invalid. The reply and its reasoning
+      # must both fit, which is what SynthesisBudgetTest pins.
+      max-tokens: 8192
       timeout: 45
       structured-output: true
       tool-calling: false

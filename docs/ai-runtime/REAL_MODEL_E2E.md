@@ -58,6 +58,26 @@ A local server that ignores authentication still needs a **non-blank**
 `AI_FAST_API_KEY` value (any placeholder, for example `ollama`), because a blank
 value means "no key" and selects the offline adapter — see the next section.
 
+### Client identity and session correlation
+
+Two headers are added to every OpenAI-compatible request, both from `ai.client.*`
+(environment overrides `AI_CLIENT_USER_AGENT`, `AI_SESSION_HEADER_NAME`,
+`AI_SESSION_HEADER_ENABLED`):
+
+| header | value | why |
+| --- | --- | --- |
+| `User-Agent` | `SignalFrame/0.1.0` by default | identifies **this** runtime truthfully. It is never OpenCode, Claude Code, curl or a browser, and the identity is deployment configuration rather than a compiled-in constant. |
+| `x-opencode-session` *(name configurable)* | a UUID derived from the analysis job id | lets a gateway attribute the transport retry and the single bounded repair round of one analysis to one session. |
+
+The session value is derived (`AnalysisJob` id → `UUID.nameUUIDFromBytes`), not
+generated per call, so the first attempt, a transport retry, the repair round and
+every stage of one analysis all carry the same opaque session, and two analyses
+never share one. Set `AI_SESSION_HEADER_ENABLED=false`, or blank the header name,
+for a provider that does not want the header. The behaviour is pinned against the
+local stub server by `OpenAiClientCompatibilityTest`, which asserts the header
+reaches the wire, is stable across retry and repair, differs per analysis, and
+never impersonates another client.
+
 ### Live, Mock and Disabled
 
 `GET /api/v1/settings/model-profiles` reports the effective mode per profile and
@@ -332,6 +352,28 @@ breakdown at INFO, and crossing the threshold logs a WARN naming the provider an
 model: it changes no behaviour, because the request is still valid and the provider
 may well accept it, but it makes a silent truncation visible before it is
 misdiagnosed as a model defect.
+
+### Reasoning tokens share the completion ceiling
+
+A reasoning model returns `reasoning_content` next to `content` and reports
+`completion_tokens_details.reasoning_tokens`. What that means for the runtime:
+
+- **Only `content` is the completion.** `reasoning_content` is a separate field and
+  is never parsed as the answer. A reply that carries reasoning and no content is
+  reported as `PROVIDER_RESPONSE_INVALID`, not as an empty snapshot: the model did
+  not answer.
+- **Reasoning is already inside `completion_tokens`**, so `input + output == total`
+  still holds and no token is double counted. The reasoning count itself is not
+  persisted: `ModelRun` has no field for it and the audit keeps its frozen shape.
+- **Reasoning spends the `max-tokens` ceiling before any JSON is emitted.** A
+  ceiling sized for the JSON alone truncates the reply mid-object, and truncated
+  JSON fails the schema gate — which looks like a model defect. `analysis.fast`
+  therefore ships `max-tokens: 8192`; the reference snapshot is ~1.2 k estimated
+  tokens, so the reply, a verbose real snapshot and its reasoning all fit.
+  `SynthesisBudgetTest` pins both the configured ceiling and that headroom.
+- `finish_reason` is not interpreted by the runtime: a `length`-truncated body is
+  returned to the validator as-is, so truncation surfaces as a schema failure
+  rather than as a silently accepted partial snapshot.
 
 Sizing guidance, in the order that avoids waste:
 
