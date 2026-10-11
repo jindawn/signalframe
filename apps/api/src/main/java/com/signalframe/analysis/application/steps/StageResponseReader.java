@@ -1,6 +1,7 @@
 package com.signalframe.analysis.application.steps;
 
 import com.signalframe.analysis.application.steps.ProtocolModel.*;
+import com.signalframe.contract.ClaimType;
 import com.signalframe.contract.SourceRef;
 import com.signalframe.shared.JsonCodec;
 import java.util.*;
@@ -52,6 +53,10 @@ public class StageResponseReader {
   // ---- stage entry points -------------------------------------------------
 
   public Artifacts<Fact> facts(String raw, PipelineState state) {
+    // Checked before either path: an illegal enum must be refused no matter which
+    // shape the reply takes, and the snapshot fallback must not quietly accept what
+    // the envelope path would have rejected.
+    requireDeclaredEnums(raw);
     var envelope = envelope(raw, FactsEnvelope.class);
     if (envelope.present()) return factsEnvelope(envelope.get(), state);
     var snapshot = snapshot(raw);
@@ -63,7 +68,9 @@ public class StageResponseReader {
         snapshot.get().demo()
       );
     }
-    throw wrongShape(raw, "facts");
+    // The envelope failure is the first and real cause; a shape complaint about the
+    // snapshot path must not overwrite it.
+    throw wrongShape(raw, "facts", envelope.diagnosis());
   }
 
   public Artifacts<Variable> variables(String raw, PipelineState state) {
@@ -660,6 +667,65 @@ public class StageResponseReader {
 
   // ---- shared validation -------------------------------------------------
 
+  /**
+   * Rejects an illegal enum declaration at the raw JSON level.
+   *
+   * <p>Jackson maps an unknown enum value to {@code null}, and the DTO's compact
+   * constructor then applies its conservative default. The effect is that a model
+   * declaring {@code "verificationStatus":"NOT_A_STATUS"} was silently recorded as
+   * {@code REPORTED} — an epistemic status the model never claimed. Reading the
+   * declared value before the default is applied is the only way to tell "not
+   * declared" from "declared illegally", and the two must not be conflated.
+   */
+  private void requireDeclaredEnums(String raw) {
+    Map<String, Object> tree;
+    try {
+      tree = json.read(raw, Map.class);
+    } catch (RuntimeException notJson) {
+      return; // a malformed reply is refused by the paths that own that decision
+    }
+    if (!(tree.get("facts") instanceof List<?> facts)) return;
+    for (int i = 0; i < facts.size(); i++) {
+      if (!(facts.get(i) instanceof Map<?, ?> fact)) continue;
+      requireDeclaredEnum(
+        fact.get("type"),
+        "facts[" + i + "].type",
+        "FACT|INFERENCE|HYPOTHESIS|PREDICTION|UNKNOWN"
+      );
+      requireDeclaredEnum(
+        fact.get("verificationStatus"),
+        "facts[" + i + "].verificationStatus",
+        "REPORTED|CORROBORATED|DISPUTED"
+      );
+    }
+  }
+
+  private static void requireDeclaredEnum(
+    Object declared,
+    String field,
+    String allowed
+  ) {
+    if (declared == null) return; // absent is the conservative default, not a lie
+    if (!(declared instanceof String value)) throw StageOutputException.schema(
+      field +
+      ": EXPECTED_ENUM(" +
+      allowed +
+      "), ACTUAL JSON " +
+      (declared instanceof Map<?, ?>
+        ? "OBJECT"
+        : declared instanceof List<?> ? "ARRAY" : declared.getClass().getSimpleName().toUpperCase(java.util.Locale.ROOT))
+    );
+    for (var permitted : allowed.split("\\|")) if (permitted.equals(value)) return;
+    throw StageOutputException.schema(
+      field +
+      ": EXPECTED_ENUM(" +
+      allowed +
+      "), ACTUAL " +
+      value +
+      " — an illegal enum is refused, never silently downgraded"
+    );
+  }
+
   private Artifacts<Fact> factsEnvelope(FactsEnvelope envelope, PipelineState state) {
     var facts = orEmpty(envelope.facts());
     if (facts.isEmpty()) throw StageOutputException.schema(
@@ -676,6 +742,16 @@ public class StageResponseReader {
     var validated = new ArrayList<Fact>();
     var spans = new HashSet<String>();
     for (var fact : facts) {
+      if (fact.type() != ClaimType.FACT) throw StageOutputException.schema(
+        "facts[].type: the fact stage may only report FACT, got " +
+        fact.type() +
+        " (STG-03)"
+      );
+      if (fact.confidence() != null && (fact.confidence() < 0 || fact.confidence() > 100)) {
+        throw StageOutputException.schema(
+          "facts[].confidence: must be a 0-100 judgment when present"
+        );
+      }
       requireText(fact.statement(), "facts[].statement");
       requireText(fact.reasoning(), "facts[].reasoning");
       if (fact.sourceRefs().isEmpty()) throw StageOutputException.schema(
@@ -880,19 +956,157 @@ public class StageResponseReader {
 
   private <T> Present<T> envelope(String raw, Class<T> type) {
     try {
-      return new Present<>(json.read(raw, type));
+      return new Present<>(json.read(raw, type), Optional.empty());
     } catch (RuntimeException notTheEnvelopeShape) {
-      return new Present<>(null);
+      return new Present<>(null, Optional.of(EnvelopeDiagnosis.of(notTheEnvelopeShape, type)));
     }
   }
 
-  private record Present<T>(T value) {
+  private record Present<T>(T value, Optional<EnvelopeDiagnosis> diagnosis) {
     boolean present() {
       return value != null;
     }
 
     T get() {
       return value;
+    }
+  }
+
+  /**
+   * A redacted, structural account of why an envelope could not be read.
+   *
+   * <p>It carries only the JSON field path, the expected Java type, the JSON type
+   * actually seen and a failure category. It never carries model output, a prompt,
+   * the source text or a credential, so it is safe to persist on a job.
+   *
+   * <p>Without it a field-level mismatch was reported as "the reply has no facts
+   * array", which hid the real cause and made a paid attempt undiagnosable.
+   */
+  public record EnvelopeDiagnosis(
+    String errorCode,
+    String fieldPath,
+    String expectedType,
+    String actualJsonType,
+    String failureCategory
+  ) {
+    static EnvelopeDiagnosis of(RuntimeException failure, Class<?> target) {
+      var simpleName = failure.getClass().getSimpleName();
+      var message = failure.getMessage() == null ? "" : failure.getMessage();
+      var path = jsonPath(failure, target);
+      var actual = jsonTypeOf(message);
+      var category = switch (simpleName) {
+        case "UnrecognizedPropertyException" -> "UNKNOWN_FIELD";
+        case "InvalidFormatException" -> "INVALID_VALUE";
+        case "MismatchedInputException" -> "WRONG_JSON_TYPE";
+        case "MissingRequiredPropertyException" -> "MISSING_REQUIRED";
+        case "JacksonException", "JsonParseException", "StreamReadException" -> "MALFORMED_JSON";
+        default -> "UNCLASSIFIED";
+      };
+      var expected = expectedTypeOf(failure, message);
+      var code = switch (category) {
+        case "UNKNOWN_FIELD" -> "ENVELOPE_UNKNOWN_FIELD";
+        case "INVALID_VALUE" -> invalidValueCode(expected);
+        case "WRONG_JSON_TYPE" -> "WRONG_JSON_TYPE".equals(jsonTypeOf(message))
+          ? "ENVELOPE_TYPE_MISMATCH"
+          : "ENVELOPE_EXPECTED_" + actual;
+        case "MISSING_REQUIRED" -> "ENVELOPE_MISSING_REQUIRED";
+        case "MALFORMED_JSON" -> "ENVELOPE_MALFORMED_JSON";
+        default -> "ENVELOPE_UNREADABLE";
+      };
+      return new EnvelopeDiagnosis(code, path, expected, actual, category);
+    }
+
+    /** An enum or UUID value that could not be represented as the expected type. */
+    private static String invalidValueCode(String expectedType) {
+      if (expectedType == null) return "ENVELOPE_INVALID_VALUE";
+      if (expectedType.endsWith("ProofStatus") || expectedType.endsWith("ClaimType")) {
+        return "ENVELOPE_INVALID_ENUM";
+      }
+      if (expectedType.endsWith("UUID")) return "ENVELOPE_INVALID_UUID";
+      return "ENVELOPE_INVALID_VALUE";
+    }
+
+    /** The JSON field path, from Jackson's own reference chain. */
+    private static String jsonPath(RuntimeException failure, Class<?> target) {
+      try {
+        if (failure instanceof tools.jackson.core.JacksonException jackson) {
+          var parts = new StringBuilder();
+          for (var ref : jackson.getPath()) {
+            if (ref.getPropertyName() != null) {
+              if (parts.length() > 0) parts.append('.');
+              parts.append(ref.getPropertyName());
+            } else if (ref.getIndex() >= 0) {
+              parts.append('[').append(ref.getIndex()).append(']');
+            }
+            // A reference carrying only a Java class is noise for an operator.
+          }
+          if (parts.length() > 0) return parts.toString();
+        }
+      } catch (RuntimeException unusablePath) {
+        // fall through: a path we cannot read is reported as unknown, never guessed
+      }
+      return "UNKNOWN";
+    }
+
+    /** The Java type Jackson was trying to build, when it names one. */
+    private static String expectedTypeOf(RuntimeException failure, String message) {
+      try {
+        if (
+          failure instanceof tools.jackson.databind.exc.MismatchedInputException mismatched &&
+          mismatched.getTargetType() != null
+        ) return mismatched.getTargetType().getSimpleName();
+      } catch (RuntimeException unusableType) {
+        // fall through to the message
+      }
+      var at = message.indexOf("of type `");
+      if (at >= 0) {
+        var end = message.indexOf('`', at + 9);
+        if (end > at) return simpleType(message.substring(at + 9, end));
+      }
+      var from = message.indexOf("Enum class ");
+      if (from >= 0) {
+        var end = message.indexOf(' ', from + 11);
+        return simpleType(end > from ? message.substring(from + 11, end) : message.substring(from + 11));
+      }
+      return "UNKNOWN";
+    }
+
+    /** A fully qualified Java type reduced to its simple name. */
+    private static String simpleType(String qualified) {
+      var trimmed = qualified.trim();
+      var dot = trimmed.lastIndexOf('.');
+      var name = dot >= 0 ? trimmed.substring(dot + 1) : trimmed;
+      return name.endsWith(";") ? name.substring(0, name.length() - 1) : name;
+    }
+
+    /** The JSON type actually encountered: a shape, never a value. */
+    private static String jsonTypeOf(String message) {
+      for (var pair : new String[][] {
+        { "from String", "STRING" },
+        { "from Object", "OBJECT" },
+        { "from Array", "ARRAY" },
+        { "from Boolean", "BOOLEAN" },
+        { "from Integer", "NUMBER" },
+        { "from Floating point", "NUMBER" },
+        { "from Null", "NULL" },
+      }) if (message.contains(pair[0])) return pair[1];
+      return "UNKNOWN";
+    }
+
+    /** A single line for a stage failure, with no model content in it. */
+    public String render() {
+      return (
+        errorCode +
+        " at " +
+        fieldPath +
+        " (expected " +
+        expectedType +
+        ", actual JSON " +
+        actualJsonType +
+        ", category " +
+        failureCategory +
+        ")"
+      );
     }
   }
 
@@ -906,6 +1120,14 @@ public class StageResponseReader {
    * silently coerced.
    */
   private StageOutputException wrongShape(String raw, String key) {
+    return wrongShape(raw, key, Optional.empty());
+  }
+
+  private StageOutputException wrongShape(
+    String raw,
+    String key,
+    Optional<EnvelopeDiagnosis> diagnosis
+  ) {
     Map<String, Object> tree;
     try {
       tree = json.read(raw, Map.class);
@@ -921,6 +1143,36 @@ public class StageResponseReader {
     var shape = keys.isEmpty()
       ? "an object with no keys"
       : "top-level keys " + keys;
+    if (diagnosis.isPresent()) {
+      if (!keys.contains(key)) {
+        // The root itself is wrong: the expected key is absent. The field-level
+        // cause is reported as context, never as the headline.
+        return StageOutputException.schema(
+          "expected a JSON object with a '" +
+          key +
+          "' array (or a complete AnalysisResult snapshot); the reply was " +
+          shape +
+          " (" +
+          (raw == null ? 0 : raw.length()) +
+          " chars); first deserialization failure: " +
+          diagnosis.get().render()
+        );
+      }
+      // The root is right and the reply failed inside it: report the field-level
+      // cause, and the root shape only as context. This is the distinction between
+      // a wrong top-level structure and a field-level type mismatch.
+      return StageOutputException.schema(
+        "the reply's '" +
+        key +
+        "' array could not be read: " +
+        diagnosis.get().render() +
+        "; top-level keys " +
+        keys +
+        " (" +
+        (raw == null ? 0 : raw.length()) +
+        " chars)"
+      );
+    }
     return StageOutputException.schema(
       "expected a JSON object with a '" +
       key +
