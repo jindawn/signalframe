@@ -67,10 +67,20 @@ public class OpenAiCompatibleGateway implements ModelProviderAdapter {
   private final String userAgent;
   private final String sessionHeaderName;
   private final boolean sessionHeaderEnabled;
+  private final org.springframework.core.env.Environment environment;
 
   /** Test/default construction: documented defaults, no Spring context. */
   public OpenAiCompatibleGateway() {
-    this(DEFAULT_USER_AGENT, DEFAULT_SESSION_HEADER, true);
+    this(DEFAULT_USER_AGENT, DEFAULT_SESSION_HEADER, true, null);
+  }
+
+  /** Explicit construction without a Spring context: no reasoning effort is sent. */
+  public OpenAiCompatibleGateway(
+    String userAgent,
+    String sessionHeaderName,
+    boolean sessionHeaderEnabled
+  ) {
+    this(userAgent, sessionHeaderName, sessionHeaderEnabled, null);
   }
 
   @Autowired
@@ -79,13 +89,15 @@ public class OpenAiCompatibleGateway implements ModelProviderAdapter {
     @Value(
       "${ai.client.session-header-name:" + DEFAULT_SESSION_HEADER + "}"
     ) String sessionHeaderName,
-    @Value("${ai.client.session-header-enabled:true}") boolean sessionHeaderEnabled
+    @Value("${ai.client.session-header-enabled:true}") boolean sessionHeaderEnabled,
+    org.springframework.core.env.Environment environment
   ) {
     this.userAgent = userAgent == null || userAgent.isBlank()
       ? DEFAULT_USER_AGENT
       : userAgent.trim();
     this.sessionHeaderName = sessionHeaderName == null ? "" : sessionHeaderName.trim();
     this.sessionHeaderEnabled = sessionHeaderEnabled;
+    this.environment = environment;
   }
 
   @Override
@@ -117,7 +129,8 @@ public class OpenAiCompatibleGateway implements ModelProviderAdapter {
       var response = chatModel(
         profile,
         credentials,
-        clientHeaders(request)
+        clientHeaders(request),
+        reasoningEffort(request)
       ).call(new Prompt(request.prompt()));
       return toResponse(response, profile, credentials);
     } catch (ModelInvocationException e) {
@@ -137,6 +150,23 @@ public class OpenAiCompatibleGateway implements ModelProviderAdapter {
    * <p>Kept separate from the provider transport so that the identity and the
    * session rule are testable against a stub without a live endpoint.
    */
+  /**
+   * The reasoning effort this call should ask for, or null to send nothing.
+   *
+   * <p>Scoped by purpose rather than by profile, because two stages of one analysis
+   * can share a profile while needing different reasoning budgets: Stage 1 has to
+   * emit JSON, and a reasoning model that spends the whole completion ceiling
+   * thinking emits nothing at all. An unset value leaves the provider default
+   * untouched, so nothing changes unless a deployment asks for it.
+   */
+  public String reasoningEffort(ModelRequest request) {
+    if (environment == null) return null;
+    return environment.getProperty(
+      "ai.client.reasoning-effort." + request.purpose(),
+      ""
+    );
+  }
+
   Map<String, String> clientHeaders(ModelRequest request) {
     var headers = new LinkedHashMap<String, String>();
     headers.put("User-Agent", userAgent);
@@ -166,7 +196,8 @@ public class OpenAiCompatibleGateway implements ModelProviderAdapter {
   private static OpenAiChatModel chatModel(
     ModelProfile profile,
     ModelCredentials credentials,
-    Map<String, String> headers
+    Map<String, String> headers,
+    String reasoningEffort
   ) {
     var options = OpenAiChatOptions.builder()
       .baseUrl(profile.baseUrl())
@@ -176,6 +207,11 @@ public class OpenAiCompatibleGateway implements ModelProviderAdapter {
       .maxTokens(profile.maxTokens())
       .timeout(Duration.ofSeconds(profile.timeout()))
       .maxRetries(0);
+    if (reasoningEffort != null && !reasoningEffort.isBlank()) {
+      // The provider's own declared ladder, passed through verbatim: the value is
+      // deployment configuration, never a model or provider name in business code.
+      options.reasoningEffort(reasoningEffort.trim());
+    }
     if (profile.structuredOutput()) {
       var format = new OpenAiChatModel.ResponseFormat();
       format.setType(OpenAiChatModel.ResponseFormat.Type.JSON_OBJECT);

@@ -37,6 +37,15 @@ ai:
     user-agent: ${AI_CLIENT_USER_AGENT:SignalFrame/0.1.0}
     session-header-name: ${AI_SESSION_HEADER_NAME:x-opencode-session}
     session-header-enabled: ${AI_SESSION_HEADER_ENABLED:true}
+    # Optional reasoning effort, scoped by purpose rather than by profile, because
+    # two stages can share a profile while needing different reasoning budgets.
+    # Stage 1 must emit JSON, and a reasoning model that spends its whole
+    # completion ceiling thinking emits nothing at all (measured: finish_reason
+    # LENGTH with empty content at 8192). The value is passed through verbatim to
+    # the provider's own declared ladder; unset means send nothing, so the
+    # provider default is untouched unless a deployment asks for it.
+    #   ai.client.reasoning-effort.FACT_EXTRACTION=low
+    #   ai.client.reasoning-effort.SYNTHESIS=high
   # How many provider requests one analysis may issue. max-attempts counts
   # transport attempts per round; max-repair-attempts counts the extra round a
   # schema/provenance failure is allowed. Setting max-attempts=1 and

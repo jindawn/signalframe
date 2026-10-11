@@ -37,6 +37,8 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
     "ai.two-stage.facts.max-repair-attempts=0",
     "ai.two-stage.facts.max-tokens=8192",
     "ai.two-stage.facts.timeout=120",
+    // 仅 Stage 1（FACT_EXTRACTION）设置推理强度；SYNTHESIS 不受影响
+    "ai.client.reasoning-effort.FACT_EXTRACTION=low",
   }
 )
 class Stage1ProbeRehearsalTest {
@@ -128,6 +130,9 @@ class Stage1ProbeRehearsalTest {
   @Autowired
   com.signalframe.jobs.domain.JobRepository jobs;
 
+  @Autowired
+  com.signalframe.infrastructure.ai.providers.OpenAiCompatibleGateway gateway;
+
   @BeforeEach
   void reset() {
     stub.clear();
@@ -184,7 +189,41 @@ class Stage1ProbeRehearsalTest {
     assertTrue(sent.contains("fact extraction stage"), sent.substring(0, 160));
     assertFalse(sent.contains("analysis stage of a research pipeline"));
     assertTrue(sent.contains("\"max_tokens\":8192"), "the probe ceiling reaches the wire");
+    assertTrue(
+      sent.contains("\"reasoning_effort\":\"low\""),
+      "Stage 1 的推理强度必须真的写到 wire 上"
+    );
     assertEquals("SignalFrame/0.1.0", stub.header(0, "User-Agent"));
+  }
+
+  /** 推理强度按 purpose 生效：Stage 1 有，Stage 2 不受影响。 */
+  @Test
+  void reasoningEffortIsScopedToStageOneOnly() {
+    var news = PipelineFixtures.news(NEWS_TEXT);
+    var request = new com.signalframe.ai.domain.ModelRequest(
+      UUID.randomUUID(),
+      ModelPurpose.FACT_EXTRACTION,
+      "two-stage-facts-v1",
+      "prompt",
+      news,
+      com.signalframe.ai.AiTestFixtures.profile("openai-compatible", STUB_MODEL),
+      false
+    );
+    assertEquals("low", gateway.reasoningEffort(request));
+
+    var synthesis = new com.signalframe.ai.domain.ModelRequest(
+      UUID.randomUUID(),
+      ModelPurpose.SYNTHESIS,
+      "two-stage-reasoning-v2",
+      "prompt",
+      news,
+      com.signalframe.ai.AiTestFixtures.profile("openai-compatible", STUB_MODEL),
+      false
+    );
+    assertTrue(
+      gateway.reasoningEffort(synthesis).isBlank(),
+      "Stage 2 不得被赋予推理强度"
+    );
   }
 
   /** The reader still validates the same reply offline, unchanged. */
