@@ -775,6 +775,11 @@ public class TwoStageSynthesisService {
    * The definitions are still the generated contract's; only the missing root is
    * added here, so nothing can drift.
    */
+  /** 当前 Stage 2 使用的回复 schema，供离线契约审计读取。 */
+  String reasoningReplySchema() {
+    return reasoningSchema;
+  }
+
   String factsReplySchema() {
     var projected = deps.json().read(factsSchema, Map.class);
     var root = new LinkedHashMap<String, Object>(projected);
