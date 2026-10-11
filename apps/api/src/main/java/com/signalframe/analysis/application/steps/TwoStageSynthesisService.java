@@ -1006,7 +1006,14 @@ public class TwoStageSynthesisService {
       .append("\n<untrusted_source>\n")
       .append(state.news().source().text())
       .append("\n</untrusted_source>\n")
-      .append("\nVALIDATED FACTS from stage 1 (these ids are the only fact references you may cite):\n");
+      // The stage-2 reply must carry sourceRefs[].sourceId, and the reader verifies it
+      // against the analyzed source (PR-01). Stage 1 was told this id; stage 2 was not,
+      // so a model that followed the schema could only invent a UUID or drop its spans.
+      // Stating it once here is what makes the source identity chain reproducible.
+      .append("\nThe analyzed source id is ")
+      .append(state.news().source().id())
+      .append(". Every sourceRefs[].sourceId you emit must be exactly this id: it is the only source you may cite.\n")
+      .append("\nVALIDATED FACTS from stage 1 (these ids are the only fact references you may cite; each span is verbatim source text):\n");
     for (var fact : state.facts()) {
       var span = fact.sourceRefs().isEmpty() ? null : fact.sourceRefs().getFirst();
       text
@@ -1020,13 +1027,27 @@ public class TwoStageSynthesisService {
         .append(fact.statement())
         .append('\n');
     }
+    // The tail repeats no array list: the schema above already declares the 13 arrays
+    // and their item fields, and restating them here was a second, drifting copy of the
+    // same information. What stays is what the schema cannot say — which ids are legal,
+    // how big the reply should be, and which constraint overrides the prose above.
     text.append("\nOUTPUT CONTRACT (read last): reply with one JSON object and nothing else.")
-      .append(" It carries summary, variables, mechanisms, stakeholders, firstOrderEffects, secondOrderEffects,")
-      .append(" hypotheses, alternativeExplanations, counterArguments, falsificationConditions, corroboratingSignals,")
-      .append(" verificationIndicators, predictions and unknowns. Every array must be present: use [] only for a stage")
-      .append(" you evaluated and found empty, and emit an explicit UNKNOWN item when the input does not support an")
-      .append(" artifact. Cite only the fact ids listed above; never invent a fact, a source or a span, and never state")
-      .append(" a confidence score. predictions need expectedBy and verificationCriteria. No wrapper key, no markdown.");
+      .append(" It carries summary plus the 13 arrays the schema above declares, and its keys are exactly those.")
+      .append(" Every array must be present: use [] only for an artifact you evaluated and found empty, and emit an")
+      .append(" explicit UNKNOWN item when the input does not support an artifact — one item naming the artifacts")
+      .append(" that share one cause is enough. Cite only the fact ids listed above, and set every")
+      .append(" sourceRefs[].sourceId to ")
+      .append(state.news().source().id())
+      .append("; never invent a fact, a source or a span.")
+      .append(" Item-level `confidence` is an allowed advisory 0-100 diagnostic on an item whose schema declares it;")
+      .append(" never add the field to an item that does not declare it. The")
+      .append(" snapshot-level confidenceAssessment is computed deterministically and must not be stated.")
+      .append(" predictions need expectedBy and verificationCriteria.")
+      .append(" Budget for a short or thin source: one to two hypotheses, at most one mechanism and at most two")
+      .append(" predictions, with the other arrays empty unless the facts support more. Never drop a counter")
+      .append(" argument, an alternative explanation, a falsification condition or a prediction's verification")
+      .append(" criteria that materially affects the conclusion. Keep `reasoning` to one or two sentences and do")
+      .append(" not copy the source beyond the spans you cite. No wrapper key, no markdown.");
     return text.toString();
   }
 }
