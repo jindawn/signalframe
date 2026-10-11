@@ -35,7 +35,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
     "ai.two-stage.max-provider-calls=1",
     "ai.two-stage.facts.max-attempts=1",
     "ai.two-stage.facts.max-repair-attempts=0",
-    "ai.two-stage.facts.max-tokens=4096",
+    "ai.two-stage.facts.max-tokens=8192",
     "ai.two-stage.facts.timeout=120",
   }
 )
@@ -162,7 +162,7 @@ class Stage1ProbeRehearsalTest {
     assertEquals(news.source().id(), ref.sourceId());
     assertTrue(probe.unknowns().isEmpty());
     assertEquals("two-stage-facts-v1", probe.promptVersion());
-    assertEquals(4096, probe.profile().maxTokens(), "the probe's own ceiling");
+    assertEquals(8192, probe.profile().maxTokens(), "the probe's own ceiling");
     assertEquals(120, probe.profile().timeout(), "the probe's own bound");
 
     // Only the facts stage ran: no second stage, no pipeline, one audit row.
@@ -183,7 +183,7 @@ class Stage1ProbeRehearsalTest {
     var sent = stub.bodies().getFirst();
     assertTrue(sent.contains("fact extraction stage"), sent.substring(0, 160));
     assertFalse(sent.contains("analysis stage of a research pipeline"));
-    assertTrue(sent.contains("\"max_tokens\":4096"), "the probe ceiling reaches the wire");
+    assertTrue(sent.contains("\"max_tokens\":8192"), "the probe ceiling reaches the wire");
     assertEquals("SignalFrame/0.1.0", stub.header(0, "User-Agent"));
   }
 
