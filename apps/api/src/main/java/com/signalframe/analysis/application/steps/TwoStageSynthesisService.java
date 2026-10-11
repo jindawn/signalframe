@@ -154,10 +154,9 @@ public class TwoStageSynthesisService {
     // Each stage prompt is shown only the definitions it may produce, projected
     // from the generated contract so it can never drift from it.
     this.factsSchema = AnalysisOutputSchema.renderFor(json, FACTS_SCHEMA_ROOTS);
-    this.reasoningSchema = AnalysisOutputSchema.renderFor(
-      json,
-      REASONING_SCHEMA_ROOTS
-    );
+    // Stage 2 的回复 schema 由 reader 真正反序列化的 DTO 派生，而不是 contract 投影：
+    // 两者字段体系不同，投影会让照 schema 输出的模型被 reader 拒绝。
+    this.reasoningSchema = StageReplySchema.render(json, TwoStageModel.Reasoning.class);
     this.assembly = new TwoStageAssembly(validator, json, rubric, strategies);
     // A stage budget is deployment configuration, so an out-of-contract value is a
     // configuration error at startup rather than a failed paid call later.
@@ -478,6 +477,61 @@ public class TwoStageSynthesisService {
     );
   }
 
+  /**
+   * Stage 2 alone.
+   *
+   * <p>Runs the reasoning contract and nothing else: no stage 1 call, no assembly, no
+   * pipeline. It reuses the same prompt assembly, the same {@link StageModelClient},
+   * the same retry policy and the same per-analysis call ceiling as the full path.
+   */
+  public ReasoningProbe reasoningOnly(
+    UUID jobId,
+    String correlationId,
+    PipelineState state,
+    String guidance
+  ) {
+    var budget = new ProviderCallBudget(deps.gateway(), maxProviderCalls);
+    var client = new StageModelClient(
+      deps.router(),
+      budget,
+      deps.runs(),
+      reasoningPolicy
+    );
+    var prompt = reasoningPrompt();
+    var profile = stageProfile(
+      ModelPurpose.SYNTHESIS,
+      reasoningMaxTokensOverride,
+      reasoningTimeoutOverride
+    );
+    var validated = client.invoke(
+      profile,
+      new StageModelClient.StageCall(
+        REASONING_STAGE,
+        jobId,
+        correlationId,
+        state.news(),
+        ModelPurpose.SYNTHESIS,
+        prompt.version(),
+        reasoningPromptText(prompt, state, guidance)
+      ),
+      raw -> validateReasoning(raw, state)
+    );
+    return new ReasoningProbe(
+      validated,
+      prompt.version(),
+      budget.used(),
+      profile
+    );
+  }
+
+  /** The outcome of a stage-2-only run, for the probe report. */
+  public record ReasoningProbe(
+    ValidatedReasoning reasoning,
+    String promptVersion,
+    int providerCalls,
+    ModelProfile profile
+  ) {}
+
   /** The outcome of a stage-1-only run, for the probe report. */
   public record FactsProbe(
     List<ProtocolModel.Fact> facts,
@@ -514,7 +568,7 @@ public class TwoStageSynthesisService {
    * accepts is supported, for the same reason every other reader supports both: the
    * offline reference fixture answers every purpose with a complete snapshot.
    */
-  record ValidatedReasoning(
+  public record ValidatedReasoning(
     String summary,
     List<ProtocolModel.Variable> variables,
     List<ProtocolModel.Mechanism> mechanisms,
