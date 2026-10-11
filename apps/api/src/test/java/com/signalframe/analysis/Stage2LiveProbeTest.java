@@ -36,7 +36,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
     "ai.two-stage.reasoning.max-repair-attempts=0",
     "ai.two-stage.reasoning.max-tokens=16384",
     "ai.two-stage.reasoning.timeout=120",
-    "ai.client.reasoning-effort.SYNTHESIS=high",
+    "ai.client.reasoning-effort.SYNTHESIS=low",
   }
 )
 class Stage2LiveProbeTest {

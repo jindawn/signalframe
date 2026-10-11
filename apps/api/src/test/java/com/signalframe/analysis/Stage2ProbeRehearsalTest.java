@@ -37,7 +37,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
     "ai.two-stage.reasoning.max-repair-attempts=0",
     "ai.two-stage.reasoning.max-tokens=16384",
     "ai.two-stage.reasoning.timeout=120",
-    "ai.client.reasoning-effort.SYNTHESIS=high",
+    "ai.client.reasoning-effort.SYNTHESIS=low",
   }
 )
 class Stage2ProbeRehearsalTest {
@@ -148,8 +148,11 @@ class Stage2ProbeRehearsalTest {
     assertEquals(120, probe.profile().timeout());
 
     var sent = stub.bodies().getFirst();
+    System.out.println(
+      "PROMPT2-WIRE " + sent.length() + " chars ~" + (sent.length() / 4) + " tokens"
+    );
     assertTrue(sent.contains("\"max_tokens\":16384"), "上限必须写到 wire 上");
-    assertTrue(sent.contains("\"reasoning_effort\":\"high\""), "推理强度必须写到 wire 上");
+    assertTrue(sent.contains("\"reasoning_effort\":\"low\""), "推理强度必须写到 wire 上");
 
     // ---- 绝不触发 Stage 1 ----
     assertFalse(
