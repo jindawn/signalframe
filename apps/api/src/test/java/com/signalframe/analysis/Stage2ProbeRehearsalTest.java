@@ -255,6 +255,77 @@ class Stage2ProbeRehearsalTest {
     assertEquals(1, runs.recent(job.id()).size(), "诊断恰好一行审计");
   }
 
+  // ---- 任务一：Stage 1 的 unknown 不得被 Stage 2 覆盖 ----
+
+  @Test
+  void stageOneUnknownsSurviveWhenStageTwoDoesNotResolveThem() {
+    var merged = TwoStageSynthesisService.mergeUnknowns(
+      StageOneSnapshot.unknowns(),
+      List.of()
+    );
+
+    assertEquals(2, merged.size(), "Stage 1 的 2 条 unknown 必须完整保留");
+    assertEquals(StageOneSnapshot.UNKNOWNS[0], merged.get(0).statement());
+    assertEquals(StageOneSnapshot.UNKNOWNS[1], merged.get(1).statement());
+  }
+
+  @Test
+  void aRestatedUnknownIsMergedNotDuplicated() {
+    var stageOne = StageOneSnapshot.unknowns();
+    var restated = new ProtocolModel.Unknown(
+      null,
+      StageOneSnapshot.UNKNOWNS[0] + "。", // 同一条，仅标点不同
+      "Stage 2 认为同样未确定",
+      "出版方的原始公告",
+      List.of()
+    );
+
+    var merged = TwoStageSynthesisService.mergeUnknowns(stageOne, List.of(restated));
+
+    assertEquals(2, merged.size(), "复述同一条不得变成三条");
+    assertEquals(
+      stageOne.getFirst().id(),
+      merged.getFirst().id(),
+      "保留 Stage 1 的来源 id"
+    );
+    assertEquals(StageOneSnapshot.UNKNOWNS[1], merged.get(1).statement());
+  }
+
+  @Test
+  void aNewStageTwoUnknownIsAppendedAfterStageOne() {
+    var extra = new ProtocolModel.Unknown(
+      null, "谈判对手的立场未知", "来源未提及", "对方公告", List.of()
+    );
+
+    var merged = TwoStageSynthesisService.mergeUnknowns(
+      StageOneSnapshot.unknowns(),
+      List.of(extra)
+    );
+
+    assertEquals(3, merged.size(), "新的未确定项必须追加而不是替换");
+    assertEquals("谈判对手的立场未知", merged.get(2).statement());
+  }
+
+  // ---- 任务四：诊断状态机 ----
+
+  @Test
+  void theDiagnosticVerdictOnlyCallsATimeoutATimeout() {
+    assertEquals(
+      "TIMED_OUT",
+      Stage2MinimalOutputDiagnosticTest.verdict("TIMEOUT", false),
+      "只有真正的超时才叫 TIMEOUT"
+    );
+    assertEquals(
+      "PROVIDER_PASS_SCHEMA_OR_RULE_FAIL",
+      Stage2MinimalOutputDiagnosticTest.verdict("OUTPUT_INVALID", true),
+      "provider 已返回时不得记成超时"
+    );
+    assertEquals(
+      "PROVIDER_FAILED_NO_RESPONSE",
+      Stage2MinimalOutputDiagnosticTest.verdict(null, false)
+    );
+  }
+
   /** 未知字段仍被拒绝，严格性没有被 schema 修复放宽。 */
   @Test
   void unknownFieldsAreStillRejectedAfterTheSchemaRepair() {

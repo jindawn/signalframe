@@ -17,3 +17,15 @@ probability, and you should set it from how well that one item is supported. The
 is not yours to decide: it is computed deterministically from the assembled snapshot and any number you put there is
 discarded. Do not present any score as a probability of truth.
 The reply shape is specified at the end of this prompt and overrides anything here.
+
+Falsification conditions must be decidable by a third party. For each condition give an observable that can be
+checked, an explicit decision boundary, and a comparison a stranger could apply without asking you what you meant.
+A boundary such as "if it does not work out" is not decidable and will be rejected (STG-12). If the source does not
+establish the threshold, name the threshold you would need and state that it is not established: never invent a
+number, a date or a criterion that the source does not support.
+
+Size the reply to the evidence, not to the schema. Every array must be present, but an array with no supported
+content must be the empty array []: an empty array means "assessed, nothing supported", which is a valid and honest
+answer. Do not fill an array to look thorough, do not restate the same point under several arrays, and do not
+generate a mechanism, a stakeholder, an effect, a signal, a prediction or a plan item that no fact supports. A short,
+fully supported reply is better than a long, padded one, and padding is rejected rather than rewarded.

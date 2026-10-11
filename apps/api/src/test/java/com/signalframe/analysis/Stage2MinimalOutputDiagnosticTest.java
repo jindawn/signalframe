@@ -124,7 +124,11 @@ class Stage2MinimalOutputDiagnosticTest {
         " hypotheses=" + probe.reasoning().hypotheses().size() +
         " falsification=" + probe.reasoning().falsificationConditions().size() +
         " unknowns=" + probe.reasoning().unknowns().size());
-      System.out.println("DIAG2 verdict=COMPLETED_WITHIN_TIMEOUT -> 瓶颈在输出规模，而非上游/传输");
+      System.out.println(
+        "DIAG2 verdict=" + verdict(run.errorType(), true) +
+        " (latencyMs=" + run.latencyMs() + " < timeout=120000)"
+      );
+      System.out.println("DIAG2 meaning=provider 在超时前返回；瓶颈在输出规模而非上游/传输");
       System.out.println("DIAG2 NOTE 这是诊断运行，不构成 Stage 2 LIVE PASS");
     } catch (RuntimeException failure) {
       var elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
@@ -134,8 +138,14 @@ class Stage2MinimalOutputDiagnosticTest {
         " errorType=" + (run == null ? "UNKNOWN" : run.errorType()) +
         " latencyMs=" + (run == null ? "UNKNOWN" : run.latencyMs()));
       System.out.println("DIAG2 failure=" + failure.getClass().getSimpleName() + ": " + failure.getMessage());
+      var errorType = run == null ? "UNKNOWN" : run.errorType();
       System.out.println(
-        "DIAG2 verdict=TIMED_OUT_WITH_MINIMAL_OUTPUT -> 与输出规模无关，问题在上游/传输侧"
+        "DIAG2 verdict=" + verdict(errorType, run != null) + " (errorType=" + errorType + ")"
+      );
+      System.out.println(
+        "DIAG2 meaning=" + ("TIMEOUT".equals(errorType)
+          ? "未在 120s 内返回：与输出规模无关，问题在上游/传输侧"
+          : "provider 已返回但在超时前校验失败：不是超时，需按 errorType 单独处理")
       );
       System.out.println("DIAG2 NOTE 这是诊断运行，不构成 Stage 2 LIVE PASS");
       // 诊断实验记录结果即可，不用断言把超时变成构建失败
@@ -150,6 +160,18 @@ class Stage2MinimalOutputDiagnosticTest {
 
     // 无论结果如何都不断言成功：本测试只产出诊断记录
     assertEquals(1, runs.recent(job.id()).size(), "诊断运行必须恰好一次 provider 请求");
+  }
+
+  /**
+   * 诊断状态机：只有真正的超时才叫 TIMEOUT。
+   *
+   * <p>此前的实现把任何异常都标成 TIMED_OUT_WITH_MINIMAL_OUTPUT，于是一次 16.4s 内
+   * 正常返回、只是 schema 校验失败的运行被错误地记成了超时。
+   */
+  static String verdict(String errorType, boolean responded) {
+    if ("TIMEOUT".equals(errorType)) return "TIMED_OUT";
+    if (responded) return "PROVIDER_PASS_SCHEMA_OR_RULE_FAIL";
+    return "PROVIDER_FAILED_NO_RESPONSE";
   }
 
   private static String token(Object value) {

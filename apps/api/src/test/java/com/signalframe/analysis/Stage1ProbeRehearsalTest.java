@@ -214,7 +214,7 @@ class Stage1ProbeRehearsalTest {
     var synthesis = new com.signalframe.ai.domain.ModelRequest(
       UUID.randomUUID(),
       ModelPurpose.SYNTHESIS,
-      "two-stage-reasoning-v2",
+      "two-stage-reasoning-v3",
       "prompt",
       news,
       com.signalframe.ai.AiTestFixtures.profile("openai-compatible", STUB_MODEL),

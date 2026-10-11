@@ -524,6 +524,67 @@ public class TwoStageSynthesisService {
     );
   }
 
+  /**
+   * Merges the unknowns of both stages instead of letting stage 2 replace stage 1.
+   *
+   * <p>Before this, {@code applyReasoning} called {@code withUnknowns(reasoning.unknowns())},
+   * so every UNKNOWN stage 1 had explicitly recorded was silently discarded unless stage 2
+   * happened to restate it — stage 2 is not even shown those unknowns, so it could not.
+   * PR-05 forbids silence about what is not established, and an UNKNOWN that disappears is
+   * exactly that.
+   *
+   * <p>Rules: an item is the same when its normalised statement matches, in which case the
+   * earlier (stage 1) statement and id are kept as the provenance of the gap while any field
+   * the earlier item left blank is filled from the later one. Otherwise both are kept, stage 1
+   * first, so the order still reads as "recorded, then extended".
+   */
+  public static List<ProtocolModel.Unknown> mergeUnknowns(
+    List<ProtocolModel.Unknown> stageOne,
+    List<ProtocolModel.Unknown> stageTwo
+  ) {
+    var merged = new ArrayList<ProtocolModel.Unknown>();
+    var byKey = new LinkedHashMap<String, Integer>();
+    for (var item : stageOne) {
+      byKey.putIfAbsent(key(item.statement()), merged.size());
+      merged.add(item);
+    }
+    for (var item : stageTwo) {
+      var key = key(item.statement());
+      var existing = byKey.get(key);
+      if (existing == null) {
+        byKey.put(key, merged.size());
+        merged.add(item);
+        continue;
+      }
+      // Same gap: keep the earlier provenance, fill in what it did not state.
+      var earlier = merged.get(existing);
+      merged.set(
+        existing,
+        new ProtocolModel.Unknown(
+          earlier.id(),
+          earlier.statement(),
+          earlier.unknownReason() == null || earlier.unknownReason().isBlank()
+            ? item.unknownReason()
+            : earlier.unknownReason(),
+          earlier.wouldResolveWith() == null || earlier.wouldResolveWith().isBlank()
+            ? item.wouldResolveWith()
+            : earlier.wouldResolveWith(),
+          earlier.sourceRefs().isEmpty() ? item.sourceRefs() : earlier.sourceRefs()
+        )
+      );
+    }
+    return List.copyOf(merged);
+  }
+
+  /** Normalised statement, so punctuation and spacing do not split one gap into two. */
+  private static String key(String statement) {
+    if (statement == null) return "";
+    return statement
+      .trim()
+      .toLowerCase(java.util.Locale.ROOT)
+      .replaceAll("[\\s。．.；;，,、!！?？]+$", "");
+  }
+
   /** The outcome of a stage-2-only run, for the probe report. */
   public record ReasoningProbe(
     ValidatedReasoning reasoning,
@@ -799,7 +860,7 @@ public class TwoStageSynthesisService {
       .withCorroboratingSignals(reasoning.signals())
       .withVerificationPlan(reasoning.plan())
       .withPredictions(reasoning.predictions())
-      .withUnknowns(reasoning.unknowns())
+      .withUnknowns(mergeUnknowns(state.unknowns(), reasoning.unknowns()))
       .withDemo(demo);
   }
 
