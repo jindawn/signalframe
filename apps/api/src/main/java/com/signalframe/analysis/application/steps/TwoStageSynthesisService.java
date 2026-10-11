@@ -804,15 +804,22 @@ public class TwoStageSynthesisService {
             "properties",
             Map.of(
               "id",
-              Map.of("type", "string"),
+              Map.of("type", "string", "format", "uuid"),
               "statement",
               Map.of("type", "string"),
               "unknownReason",
               Map.of("type", "string"),
               "wouldResolveWith",
               Map.of("type", "string"),
+              // items 必须指向 SourceRef：裸的 {"type":"array"} 会让模型自由发挥，
+              // 而 DTO 期望 List<SourceRef>，形状不符即整条回复反序列化失败。
               "sourceRefs",
-              Map.of("type", "array")
+              Map.of(
+                "type",
+                "array",
+                "items",
+                Map.of("$ref", "#/components/schemas/SourceRef")
+              )
             ),
             "required",
             List.of("statement", "unknownReason")
