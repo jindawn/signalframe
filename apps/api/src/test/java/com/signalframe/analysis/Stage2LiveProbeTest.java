@@ -82,6 +82,7 @@ class Stage2LiveProbeTest {
     );
     var job = jobs.create(news.id(), "stage2-live-probe");
     var state = StageOneSnapshot.state(job.id(), news);
+    StageOneSnapshot.requireSameSource(state, news);
 
     var probe = twoStage.reasoningOnly(job.id(), state.correlationId(), state, null);
     var audited = runs.recent(job.id());

@@ -99,6 +99,7 @@ class Stage2MinimalOutputDiagnosticTest {
     );
     var job = jobs.create(news.id(), "stage2-diagnostic");
     var state = StageOneSnapshot.state(job.id(), news);
+    StageOneSnapshot.requireSameSource(state, news);
 
     var startedAt = System.nanoTime();
     try {

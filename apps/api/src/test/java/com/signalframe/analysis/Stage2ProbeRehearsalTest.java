@@ -255,6 +255,52 @@ class Stage2ProbeRehearsalTest {
     assertEquals(1, runs.recent(job.id()).size(), "诊断恰好一行审计");
   }
 
+  // ---- Fixture 来源身份一致性 ----
+
+  @Test
+  void theSnapshotCitesTheSourceThatIsActuallyAnalyzed() {
+    var news = newsService.create(new NewsInput(null, StageOneSnapshot.TEXT, "source identity"));
+    var job = jobs.create(news.id(), "source-identity");
+    var state = StageOneSnapshot.state(job.id(), news);
+
+    assertEquals(5, state.facts().size(), "5 条 fact 全部保留");
+    for (var fact : state.facts()) {
+      for (var ref : fact.sourceRefs()) assertEquals(
+        news.source().id(),
+        ref.sourceId(),
+        "PR-01: 每个 SourceRef 必须指向本次被分析的来源"
+      );
+      assertEquals(
+        StageOneSnapshot.quote(0).length() > 0 ? fact.statement() : null,
+        fact.statement(),
+        "statement 必须是原文的精确片段"
+      );
+    }
+    // fact ID、quote、offset 与顺序不变
+    assertEquals(StageOneSnapshot.FACT_IDS[0], state.facts().getFirst().id());
+    assertEquals(StageOneSnapshot.quote(0), state.facts().getFirst().statement());
+    assertEquals(12, state.facts().getFirst().sourceRefs().getFirst().startOffset());
+    assertEquals(49, state.facts().getFirst().sourceRefs().getFirst().endOffset());
+  }
+
+  /** 负向：来源身份不一致必须直接失败，而不是留给一次真实请求去发现。 */
+  @Test
+  void aMismatchedSnapshotSourceFailsBeforeAnyRequest() {
+    var news = newsService.create(new NewsInput(null, StageOneSnapshot.TEXT, "mismatch"));
+    var state = PipelineState.initial(
+      UUID.randomUUID(), "mismatch", news, java.time.Instant.now()
+    )
+      .withFacts(StageOneSnapshot.facts(UUID.randomUUID())) // 故意用别的来源
+      .withUnknowns(StageOneSnapshot.unknowns());
+
+    var failure = assertThrows(
+      IllegalStateException.class,
+      () -> StageOneSnapshot.requireSameSource(state, news)
+    );
+
+    assertTrue(failure.getMessage().contains("fixture sourceId mismatch"), failure.getMessage());
+  }
+
   // ---- 任务一：Stage 1 的 unknown 不得被 Stage 2 覆盖 ----
 
   @Test

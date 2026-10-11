@@ -48,8 +48,20 @@ final class StageOneSnapshot {
     return TEXT.substring(SPANS[index][0], SPANS[index][1]);
   }
 
-  /** 5 条 fact，保留真实 ID、sourceId、quote 与 span。 */
+  /** 5 条 fact，保留真实 ID、quote 与 span，并使用 Stage 1 当时的来源 ID。 */
   static List<ProtocolModel.Fact> facts() {
+    return facts(SOURCE_ID);
+  }
+
+  /**
+   * 同一批 fact，但把来源身份指向本次真正被分析的来源。
+   *
+   * <p>PR-01 要求每个 SourceRef 的 sourceId 等于被分析来源的 id。快照恢复的是 Stage 1
+   * 当时的来源 ID，而每次探针都会新建一条 news（{@code NewsService.create} 不接受外部
+   * id），两者必然不同——这正是上次真实请求在 {@code variables[].sourceRefs} 上失败的
+   * 原因。fact ID、quote、UTF-16 offset 与顺序全部保留，只有来源身份对齐到本次分析。
+   */
+  static List<ProtocolModel.Fact> facts(UUID sourceId) {
     var facts = new ArrayList<ProtocolModel.Fact>();
     for (int i = 0; i < FACT_IDS.length; i++) {
       var quote = quote(i);
@@ -59,7 +71,7 @@ final class StageOneSnapshot {
           quote,
           "来源如此陈述",
           List.of(
-            new SourceRef(SOURCE_ID, quote, SPANS[i][0], SPANS[i][1])
+            new SourceRef(sourceId, quote, SPANS[i][0], SPANS[i][1])
           ),
           ProtocolModel.ProofStatus.REPORTED
         )
@@ -76,11 +88,31 @@ final class StageOneSnapshot {
     return List.copyOf(list);
   }
 
-  /** Stage 2 的输入状态：已有的 facts 与 unknowns，外加一条真实来源。 */
+  /** Stage 2 的输入状态：已有的 facts 与 unknowns，来源身份对齐到本次被分析来源。 */
   static PipelineState state(UUID jobId, NewsItem news) {
-    return PipelineState.initial(jobId, "stage2-live-probe", news, Instant.now())
-      .withFacts(facts())
+    var state = PipelineState.initial(jobId, "stage2-live-probe", news, Instant.now())
+      .withFacts(facts(news.source().id()))
       .withUnknowns(unknowns());
+    requireSameSource(state, news);
+    return state;
+  }
+
+  /**
+   * Fixture 身份一致性断言：快照的每个 SourceRef 必须指向本次被分析的来源。
+   *
+   * <p>不一致时直接失败，而不是让一次真实请求去发现它——上一次就是这样浪费掉的。
+   */
+  static void requireSameSource(PipelineState state, NewsItem news) {
+    for (var fact : state.facts()) for (var ref : fact.sourceRefs()) {
+      if (!ref.sourceId().equals(news.source().id())) throw new IllegalStateException(
+        "fixture sourceId mismatch: fact " +
+        fact.id() +
+        " cites " +
+        ref.sourceId() +
+        " but the analyzed source is " +
+        news.source().id()
+      );
+    }
   }
 
   /** 离线演练用的内存来源，原文与快照一致。 */
