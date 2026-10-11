@@ -145,6 +145,40 @@ class Stage2LiveProbeTest {
       "所有 factRefs 必须来自 Stage 1 的 5 个 id，不得凭空编造: " + cited
     );
 
+    // ---- 4. Stage 1 的 2 条 unknown 不得被静默覆盖 ----
+    // reasoningOnly 不经过 assembly，所以这里对真实 Stage 2 输出显式执行生产用的
+    // mergeUnknowns，验证"Stage 2 未有效解决时 Stage 1 的缺口完整保留"。
+    var mergedUnknowns = TwoStageSynthesisService.mergeUnknowns(
+      StageOneSnapshot.unknowns(),
+      r.unknowns()
+    );
+    for (var statement : StageOneSnapshot.UNKNOWNS) assertTrue(
+      mergedUnknowns.stream().anyMatch(m -> m.statement().equals(statement)),
+      "Stage 1 的 unknown 被静默覆盖: " + statement
+    );
+    System.out.println(
+      "PROBE2 stageOneUnknowns=" + StageOneSnapshot.UNKNOWNS.length +
+      " stageTwoUnknowns=" + r.unknowns().size() +
+      " mergedUnknowns=" + mergedUnknowns.size()
+    );
+
+    // ---- 7. 重叠 facts 是否被重复引用（计数供人工判读，重叠组为 3/4 与 5）----
+    var counts = new LinkedHashMap<UUID, Integer>();
+    for (var id : cited) counts.put(id, 0);
+    java.util.function.Consumer<List<UUID>> tally = refs -> {
+      for (var id : refs) counts.merge(id, 1, Integer::sum);
+    };
+    for (var v : r.variables()) tally.accept(v.factRefs());
+    for (var m : r.mechanisms()) tally.accept(m.factRefs());
+    for (var s : r.stakeholders()) tally.accept(s.factRefs());
+    for (var e : r.firstOrderEffects()) tally.accept(e.factRefs());
+    for (var e : r.secondOrderEffects()) tally.accept(e.factRefs());
+    for (var h : r.hypotheses()) tally.accept(h.supportingFactRefs());
+    for (var a : r.alternatives()) tally.accept(a.factRefs());
+    for (var c : r.counterArguments()) tally.accept(c.factRefs());
+    for (var pr : r.predictions()) tally.accept(pr.basisFactRefs());
+    System.out.println("PROBE2 factRefCounts=" + counts + " (重叠组: 第3/4条子句与第5条整句)");
+
     // ---- 4. 无凭空编造的事实：Stage 2 不产出 fact ----
     // reader 的窄契约不接受 facts 字段，且 factRefs 已被上面锁定，因此不存在新造事实。
 
