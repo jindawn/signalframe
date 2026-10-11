@@ -13,20 +13,19 @@
 
 ## 0. 审查对象快照（先锁定修订）
 
-**审查对象 = 以下 4 个本地提交所构成的修订**（基线 `b374bc8`）：
+**审查对象 = 提交 1 与提交 2 的代码 delta**（基线 `b374bc8`）。**改动已全部提交到本地**：
 
-| # | Commit | Subject |
-| --- | --- | --- |
-| 1 | **`0467d34`** | `fix(analysis): state the analyzed source id and scope item reference fields in the stage 2 prompt` |
-| 2 | **`41ea6f6`** | `test(analysis): add the stage 2 optimization and provenance boundary suite` |
-| 3 | **`3c7a56e`** | `docs(validation): record the stage 2 round, the KG-1 decision and its verification` |
-| 4 | **`685c9fd`** | `docs(reviews): add the stage 2 review pack and the provenance boundary note` |
-
-**代码审查范围**：提交 1（实现 + 版本断言）与提交 2（新增 15 用例）。
-提交 3、4 为文档，**不改变行为**。
+| # | Commit | Subject | 是否审查对象 |
+| --- | --- | --- | --- |
+| 1 | **`0467d34`** | `fix(analysis): state the analyzed source id and scope item reference fields in the stage 2 prompt` | ✅ **是**（实现 + 版本断言） |
+| 2 | **`41ea6f6`** | `test(analysis): add the stage 2 optimization and provenance boundary suite` | ✅ **是**（新增 15 用例） |
+| 3 | `3c7a56e` | `docs(validation): record the stage 2 round, the KG-1 decision and its verification` | 否（文档，不改变行为） |
+| 4 | `685c9fd` | `docs(reviews): add the stage 2 review pack and the provenance boundary note` | 否（文档） |
+| 5 | `d0e5243` | `docs(reviews): finalize the F5 review package, the gate status and the G4 plan` | 否（**本包自身**及其配套文档） |
 
 ```
-$ git log --oneline -5
+$ git log --oneline -6
+d0e5243 docs(reviews): finalize the F5 review package, the gate status and the G4 plan
 685c9fd docs(reviews): add the stage 2 review pack and the provenance boundary note
 3c7a56e docs(validation): record the stage 2 round, the KG-1 decision and its verification
 41ea6f6 test(analysis): add the stage 2 optimization and provenance boundary suite
@@ -34,12 +33,11 @@ $ git log --oneline -5
 b374bc8 fix(analysis): align the stage 2 probe fixture with the analyzed source
 ```
 
-**查看代码 diff**：`git diff b374bc8..41ea6f6`
+**查看代码 diff（审查对象）**：`git diff b374bc8..41ea6f6`
 
-**快照之外（未提交、**不在**审查对象内）**：
-`AGENTS.local.md`（本地叠加规则，刻意不提交）；
-`docs/reviews/WAVE3A_F5_REVIEW_HANDOFF.md`、`docs/validation/WAVE3A_REVIEW_GATE_STATUS.md`、
-`docs/validation/WAVE3A_G4_READINESS.md`（本包及其配套文档，属审查元数据）。
+**不在审查对象内**：
+`AGENTS.local.md`（本地叠加规则，**刻意不提交**，未跟踪）；
+提交 3–5 的文档（含本包），**不改变行为**。
 
 **未 push**：本分支无 upstream，全部提交仅存在于本地。
 
@@ -62,7 +60,7 @@ G4 真实验证（需真实 provider，独立授权）；R-6 的契约/Schema �
 
 ## 2. 审查对象
 
-**整份未提交 delta 为审查对象**，其中带 ⚠️ 的三项是本包重点。
+**审查对象 = 提交 1–2 的代码 delta**（`git diff b374bc8..41ea6f6`），其中带 ⚠️ 的三项是本包重点。
 
 | 文件 | 变更 | 来源轮次 |
 | --- | --- | --- |
@@ -210,7 +208,7 @@ Q6 属**决策**，不参与 F5 的 PASS/FAIL 判定，但影响 R-6 立项。
 - [ ] **c2**：确认 KG-1 的 **A1** 风险接受可接受（记录已生效）。
 - [ ] **c3**：就 **R-6** 给出结论（是否立项 / 何时 / 规则取「包含」还是「重叠」）。
 - [ ] **c4**：复核契约不变性证据（E-1 + E-5/E-6）。
-- [ ] **c5**：确认提交范围（见提交计划）并授权 Git 写操作。
+- [x] **c5**：确认提交范围并授权 Git 写操作 —— **已完成**：5 个本地提交（`0467d34`…`d0e5243`），**未 push**。
 - [ ] **c6**：人工签署 **Review Gate** 本身。
 
 **明确不在本 Gate 范围内**：
