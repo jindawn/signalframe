@@ -223,6 +223,38 @@ class Stage2ProbeRehearsalTest {
     assertTrue(contractArrays.contains("corroboratingSignals"), "信号的契约名");
   }
 
+  /**
+   * 最小输出诊断：guidance 注入而参数不变。
+   *
+   * <p>这是诊断实验的离线证明：诊断只通过 guidance 通道改变输出内容要求，不修改
+   * prompt 模板、不改契约、不改参数、不触发 Stage 1，也不会引发第二次隐式请求。
+   */
+  @Test
+  void theDiagnosticGuidanceIsInjectedWithoutChangingAnyParameter() {
+    var news = newsService.create(new NewsInput(null, StageOneSnapshot.TEXT, "stage2 diagnostic"));
+    var job = jobs.create(news.id(), "stage2-diagnostic-offline");
+    var state = StageOneSnapshot.state(job.id(), news);
+    canned.set(reasoningReply());
+
+    var probe = twoStage.reasoningOnly(
+      job.id(),
+      state.correlationId(),
+      state,
+      Stage2MinimalOutputDiagnosticTest.GUIDANCE
+    );
+
+    var sent = stub.bodies().getFirst();
+    assertTrue(
+      sent.contains("DIAGNOSTIC RUN (not an acceptance run)"),
+      "guidance 必须被追加到提示词"
+    );
+    assertTrue(sent.contains("\"max_tokens\":16384"), "诊断不得改变输出上限");
+    assertTrue(sent.contains("\"reasoning_effort\":\"low\""), "诊断不得改变推理强度");
+    assertFalse(sent.contains("fact extraction stage"), "诊断不得触发 Stage 1");
+    assertEquals(1, probe.providerCalls(), "诊断恰好一次请求");
+    assertEquals(1, runs.recent(job.id()).size(), "诊断恰好一行审计");
+  }
+
   /** 未知字段仍被拒绝，严格性没有被 schema 修复放宽。 */
   @Test
   void unknownFieldsAreStillRejectedAfterTheSchemaRepair() {
