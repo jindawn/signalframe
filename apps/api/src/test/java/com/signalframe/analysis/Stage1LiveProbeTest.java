@@ -44,6 +44,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
     "ai.two-stage.facts.max-repair-attempts=0",
     "ai.two-stage.facts.max-tokens=8192",
     "ai.two-stage.facts.timeout=120",
+    "ai.client.reasoning-effort.FACT_EXTRACTION=low",
   }
 )
 class Stage1LiveProbeTest {

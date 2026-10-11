@@ -102,6 +102,20 @@ class Stage1ResponseShapeTest {
     var components =
       (Map<String, Object>) ((Map<String, Object>) schema.get("components")).get("schemas");
     assertTrue(components.containsKey("Fact"), "the contract's definitions are still present");
+
+    // unknowns 项必须声明字段名：reader 会拒绝未知字段，schema 只写 "an object"
+    // 会让照做的模型在它从未约束过的字段上失败（实测 unknowns[0].issue）。
+    var unknownItem =
+      (Map<String, Object>) ((Map<String, Object>) properties.get("unknowns")).get("items");
+    var unknownProps = (Map<String, Object>) unknownItem.get("properties");
+    assertTrue(unknownProps.containsKey("statement"), "unknowns 项必须声明 statement");
+    assertTrue(unknownProps.containsKey("unknownReason"), "unknowns 项必须声明 unknownReason");
+    assertTrue(unknownProps.containsKey("wouldResolveWith"), "unknowns 项必须声明 wouldResolveWith");
+    assertEquals(
+      List.of("statement", "unknownReason"),
+      unknownItem.get("required"),
+      "unknowns 项的最小必填字段"
+    );
   }
 
   /** The prompt itself must name the forbidden wrapper keys. */
@@ -150,6 +164,10 @@ class Stage1ResponseShapeTest {
     assertTrue(
       text.contains("Minimal shape, for the avoidance of doubt"),
       "a literal example is given"
+    );
+    assertTrue(
+      text.contains("An unknowns item has exactly these keys"),
+      "unknowns 项的字段必须被点名"
     );
     assertTrue(
       text.contains(state.news().source().id().toString()),

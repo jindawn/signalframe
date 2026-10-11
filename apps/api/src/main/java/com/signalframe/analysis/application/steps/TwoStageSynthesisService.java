@@ -790,8 +790,34 @@ public class TwoStageSynthesisService {
           "items",
           Map.of("$ref", "#/components/schemas/Fact")
         ),
+        // The item fields are named, not left open: the reader rejects an unknown
+        // field, so a schema that says only "an object" makes a compliant model
+        // fail on a field the schema never constrained (measured: unknowns[0].issue).
         "unknowns",
-        Map.of("type", "array", "items", Map.of("type", "object"))
+        Map.of(
+          "type",
+          "array",
+          "items",
+          Map.of(
+            "type",
+            "object",
+            "properties",
+            Map.of(
+              "id",
+              Map.of("type", "string"),
+              "statement",
+              Map.of("type", "string"),
+              "unknownReason",
+              Map.of("type", "string"),
+              "wouldResolveWith",
+              Map.of("type", "string"),
+              "sourceRefs",
+              Map.of("type", "array")
+            ),
+            "required",
+            List.of("statement", "unknownReason")
+          )
+        )
       )
     );
     root.put("required", List.of("facts"));
@@ -823,6 +849,8 @@ public class TwoStageSynthesisService {
       .append(state.news().source().id())
       .append("\",\"quote\":\"<the same exact span>\",\"startOffset\":0,\"endOffset\":12}],")
       .append("\"verificationStatus\":\"REPORTED\"}],\"unknowns\":[]}")
+      .append(" An unknowns item has exactly these keys: statement, unknownReason, wouldResolveWith,")
+      .append(" and optionally id and sourceRefs; do not invent other keys there, such as issue or note.")
       .append(" Every fact statement must be copied character for character from the source text,")
       .append(" and its sourceRefs[0].sourceId must be the source UUID ")
       .append(state.news().source().id())
