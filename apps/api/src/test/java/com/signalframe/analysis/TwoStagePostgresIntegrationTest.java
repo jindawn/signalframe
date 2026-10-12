@@ -143,7 +143,7 @@ class TwoStagePostgresIntegrationTest {
       result.provenance().promptVersions()
     );
     assertTrue(
-      result.provenance().promptVersions().contains("two-stage-reasoning-v5")
+      result.provenance().promptVersions().contains("two-stage-reasoning-v6")
     );
 
     // ---- both stages are audited separately ---------------------------------
@@ -162,7 +162,7 @@ class TwoStagePostgresIntegrationTest {
     assertTrue(purposes.contains(ModelPurpose.SYNTHESIS), purposes.toString());
     var versions = Arrays.stream(runs).map(ModelRun::promptVersion).toList();
     assertTrue(versions.contains("two-stage-facts-v1"), versions.toString());
-    assertTrue(versions.contains("two-stage-reasoning-v5"), versions.toString());
+    assertTrue(versions.contains("two-stage-reasoning-v6"), versions.toString());
     for (var run : runs) {
       assertEquals("SUCCEEDED", run.status());
       assertNull(run.errorType());

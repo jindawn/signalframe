@@ -695,9 +695,19 @@ public class TwoStageSynthesisService {
       .reader()
       .variables(envelope("variables", parsed.variables(), List.of()), state)
       .value();
+    // A mechanism's endpoints are resolved against the snapshot, and this reply is
+    // where the variables they name are declared. The state therefore has to carry
+    // the reply's own variables before the links are validated, exactly as the
+    // staged topology does across calls. Validating against the pre-reply state
+    // rejected every mechanism that named a variable with STG-05.1 — a reason the
+    // model cannot act on, because naming the cause is what the rule asks for.
+    var withVariables = state.withVariables(variables);
     var mechanisms = deps
       .reader()
-      .mechanisms(envelope("mechanisms", parsed.mechanisms(), List.of()), state)
+      .mechanisms(
+        envelope("mechanisms", parsed.mechanisms(), List.of()),
+        withVariables
+      )
       .value();
     var stakeholders = deps
       .reader()

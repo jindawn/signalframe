@@ -4,6 +4,10 @@ you may not cite a source that is not the one given.
 For every artifact that rests on a fact, cite the fact ids in the reference field your own schema declares for that
 item type: factRefs for a variable, mechanism, stakeholder, effect, alternative or counter argument,
 supportingFactRefs for a hypothesis, basisFactRefs for a prediction.
+A mechanism's endpoints are references too: mechanisms[].from and mechanisms[].to must each be something that
+already exists in the snapshot — an exact variable name, a variable id, a fact id, or text copied verbatim from a
+fact statement. Never put a new concept, a paraphrase or a free-text description in from or to: an endpoint that
+does not resolve is rejected (STG-05.1), so drop the link instead of inventing an endpoint.
 A source span is required only from an item type that declares sourceRefs as well, and only such a type may carry
 one: variables, mechanisms, stakeholders, effects, alternatives, counter arguments, verification indicators (whose
 items are plan items) and unknowns. For those, give the exact span the item came from (sourceId, quote, UTF-16
