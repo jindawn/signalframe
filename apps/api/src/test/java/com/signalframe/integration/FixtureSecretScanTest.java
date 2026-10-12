@@ -31,11 +31,30 @@ class FixtureSecretScanTest {
     // JWT.
     Pattern.compile(
       "\\beyJ[A-Za-z0-9_\\-]{10,}\\.[A-Za-z0-9_\\-]{10,}\\.[A-Za-z0-9_\\-]{10,}"
-    ),
-    // Literal credential assignment.
-    Pattern.compile(
-      "(?i)(api[_-]?key|secret|token)\\s*[:=]\\s*\"[A-Za-z0-9_\\-]{16,}\""
     )
+  );
+
+  /**
+   * A literal credential assigned to a credential-named field or variable.
+   *
+   * <p>Reported apart from the shapes above, because such a literal can be a
+   * deliberate stub: a match is only a violation when the value does not declare
+   * itself as one.
+   */
+  private static final Pattern CREDENTIAL_ASSIGNMENT = Pattern.compile(
+    "(?i)(api[_-]?key|apikey|secret|token|password)\\s*[:=]\\s*\"([A-Za-z0-9_\\-]{16,})\""
+  );
+
+  /**
+   * Markers that declare a literal deliberately non-secret.
+   *
+   * <p>The marker must be its own delimited segment. A real key that happens to
+   * contain the letters "test" mid-string is still reported, while
+   * {@code "stub-secret-do-not-leak"} — the value the credential-redaction test
+   * deliberately asserts on — is not.
+   */
+  private static final Pattern DECLARED_NON_SECRET = Pattern.compile(
+    "(?i)(^|[-_/])(test|stub|fake|dummy|placeholder|example|sample|redacted|local|changeme|notreal|not-a-real|do-not-leak)([-_/]|$)"
   );
 
   private static final Set<String> SKIPPED_DIRECTORIES = Set.of(
@@ -60,6 +79,18 @@ class FixtureSecretScanTest {
           for (var pattern : CREDENTIAL_SHAPES) assertFalse(
             pattern.matcher(text).find(),
             file + " contains a credential-shaped literal (" + pattern + ")"
+          );
+          // The value is never echoed: a real finding must not be copied into
+          // the build log by the guard that found it.
+          var assignments = CREDENTIAL_ASSIGNMENT.matcher(text);
+          while (assignments.find()) assertTrue(
+            DECLARED_NON_SECRET.matcher(assignments.group(2)).find(),
+            file +
+            " assigns a " +
+            assignments.group(2).length() +
+            "-character credential-shaped literal to " +
+            assignments.group(1) +
+            " without declaring it a stub"
           );
           scanned.add(file.toString());
         }
