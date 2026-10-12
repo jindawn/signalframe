@@ -136,7 +136,7 @@ Optional knobs for the opt-in run:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `AI_REAL_MODEL_E2E_TIMEOUT_SECONDS` | profile YAML (`45`) | per-call timeout override, 1–120 |
+| `AI_REAL_MODEL_E2E_TIMEOUT_SECONDS` | profile YAML (`45`) | per-call timeout override, 1–600 |
 | `AI_REAL_MODEL_E2E_JOB_TIMEOUT_SECONDS` | `600` | how long the strict tier waits for the job |
 
 Without `AI_REAL_MODEL_E2E` the suite is skipped. With the flag but without all
@@ -243,9 +243,13 @@ this task and none of them was fixed here.
    `PROVIDER_RESPONSE_INVALID` even though the completion text was fine. Pinned
    by `providerOmittingTotalTokensIsRejectedAsAnUndecodableBody`.
 
-3. **`timeout` is capped at 120 s** by the `ModelProfile` contract. A local 8B
-   model needs more than that for the ~7.6k-token synthesis prompt, so such a
-   model times out at the configured bound (`TIMEOUT`, retried, audited).
+3. **`timeout` is capped at 600 s** by the `ModelProfile` contract; it was capped
+   at 120 s until a reasoning model was measured needing longer — a monolithic
+   synthesis call over a ~20k-token prompt did not finish inside 120 s, and a
+   two-stage stage 2 at medium reasoning effort did not either. The cap is a
+   ceiling, not a default: a deployment still picks its own value, and a model
+   that needs longer than the configured bound still times out honestly
+   (`TIMEOUT`, retried, audited).
 
 4. **`temperature` is always sent.** Models that reject a non-default
    temperature (for example some reasoning models) cannot be configured today,
