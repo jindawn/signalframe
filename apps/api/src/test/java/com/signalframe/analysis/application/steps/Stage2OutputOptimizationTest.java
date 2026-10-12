@@ -7,6 +7,8 @@ import com.signalframe.contract.NewsItem;
 import com.signalframe.contract.SourceRef;
 import com.signalframe.shared.JsonCodec;
 import com.signalframe.shared.confidence.ConfidenceRubric;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.*;
 import org.junit.jupiter.api.Test;
@@ -252,6 +254,41 @@ class Stage2OutputOptimizationTest {
     return out;
   }
 
+  /** 根对象里某个数组的元素类型名（取自 {@code items.$ref}）。 */
+  @SuppressWarnings("unchecked")
+  static String itemTypeOf(Map<String, Object> schema, String array) {
+    var root = (Map<String, Object>) schema.get("properties");
+    var prop = (Map<String, Object>) root.get(array);
+    assertNotNull(prop, "根对象缺少数组 " + array);
+    var items = (Map<String, Object>) prop.get("items");
+    var ref = String.valueOf(items.get("$ref"));
+    return ref.substring(ref.lastIndexOf('/') + 1);
+  }
+
+  /** 某个 item 类型在 {@code required} 里声明的 "*Refs" 字段名。 */
+  @SuppressWarnings("unchecked")
+  static Set<String> requiredRefFields(Map<String, Object> defs, String name) {
+    var req = (List<Object>) ((Map<String, Object>) defs.get(name)).get("required");
+    var out = new TreeSet<String>();
+    if (req != null) for (var r : req) {
+      var s = String.valueOf(r);
+      if (s.endsWith("Refs")) out.add(s);
+    }
+    return out;
+  }
+
+  /** 根对象引用的全部元素类型名。 */
+  @SuppressWarnings("unchecked")
+  static Set<String> replyItemTypes(Map<String, Object> schema) {
+    var root = (Map<String, Object>) schema.get("properties");
+    var out = new TreeSet<String>();
+    for (var key : root.keySet()) {
+      var prop = (Map<String, Object>) root.get(key);
+      if ("array".equals(prop.get("type"))) out.add(itemTypeOf(schema, key));
+    }
+    return out;
+  }
+
   /**
    * 同一类缺陷的第二个实例：正文原本笼统地说"每个基于事实的产物都要给 factRefs 和
    * sourceRefs"。但 {@code Hypothesis} 声明的是 {@code supportingFactRefs} 且没有
@@ -294,6 +331,152 @@ class Stage2OutputOptimizationTest {
       prompt.contains("give BOTH the fact id in its factRefs and the exact source span it came from in its sourceRefs"),
       "笼统措辞会给 Hypothesis/Prediction/FalsificationCondition/Signal 加上非法字段"
     );
+  }
+
+  /**
+   * 独立复核指出原用例的覆盖不足：只钉了 7 个类型，漏了 {@code Mechanism}/
+   * {@code Stakeholder}/{@code Effect}/{@code Alternative}/{@code CounterArgument}，
+   * 也没有钉"数组 → 元素类型"这一层——而 {@code verificationIndicators} 的元素是
+   * {@code PlanItem}，因此它必须有 span，正文却只提"plan items"。
+   * 本用例把两层都钉住，并用"元素类型集合"做完整性护栏：新增类型时它会失败。
+   */
+  @SuppressWarnings("unchecked")
+  @Test
+  void everyReplyArrayMapsToTheItemTypeWhoseReferenceFieldsItDeclares() {
+    var schema = (Map<String, Object>) JSON.read(service().reasoningReplySchema(), Map.class);
+    var defs = (Map<String, Object>) schema.get("$defs");
+
+    var arrays = new LinkedHashMap<String, String>();
+    arrays.put("variables", "Variable");
+    arrays.put("mechanisms", "Mechanism");
+    arrays.put("stakeholders", "Stakeholder");
+    arrays.put("firstOrderEffects", "Effect");
+    arrays.put("secondOrderEffects", "Effect");
+    arrays.put("hypotheses", "Hypothesis");
+    arrays.put("alternativeExplanations", "Alternative");
+    arrays.put("counterArguments", "CounterArgument");
+    arrays.put("falsificationConditions", "FalsificationCondition");
+    arrays.put("corroboratingSignals", "Signal");
+    arrays.put("verificationIndicators", "PlanItem");
+    arrays.put("predictions", "Prediction");
+    arrays.put("unknowns", "Unknown");
+    for (var e : arrays.entrySet()) {
+      assertEquals(e.getValue(), itemTypeOf(schema, e.getKey()), e.getKey() + " 的元素类型");
+    }
+
+    assertEquals(Set.of("factRefs", "sourceRefs"), refFields(defs, "Variable"));
+    assertEquals(Set.of("factRefs", "sourceRefs"), refFields(defs, "Mechanism"));
+    assertEquals(Set.of("factRefs", "sourceRefs"), refFields(defs, "Stakeholder"));
+    assertEquals(
+      Set.of("derivedFromRefs", "factRefs", "sourceRefs"),
+      refFields(defs, "Effect"),
+      "Effect 还有 derivedFromRefs（指向一阶效应，STG-08），它不是事实引用"
+    );
+    assertEquals(Set.of("factRefs", "sourceRefs"), refFields(defs, "Alternative"));
+    assertEquals(Set.of("factRefs", "sourceRefs"), refFields(defs, "CounterArgument"));
+    assertEquals(
+      Set.of("supportingFactRefs", "supportingEvidenceRefs", "contradictingEvidenceRefs", "alternativeRefs", "falsificationRefs"),
+      refFields(defs, "Hypothesis")
+    );
+    assertEquals(Set.of("basisFactRefs"), refFields(defs, "Prediction"));
+    assertEquals(Set.of("sourceRefs"), refFields(defs, "PlanItem"));
+    assertEquals(Set.of("sourceRefs"), refFields(defs, "Unknown"));
+    assertEquals(Set.of(), refFields(defs, "FalsificationCondition"));
+    assertEquals(Set.of(), refFields(defs, "Signal"));
+
+    // 这些引用字段在 schema 里都是 required：漏写即整条被拒
+    assertEquals(Set.of("factRefs", "sourceRefs"), requiredRefFields(defs, "Variable"));
+    assertEquals(Set.of("derivedFromRefs", "factRefs", "sourceRefs"), requiredRefFields(defs, "Effect"));
+    assertEquals(Set.of("basisFactRefs"), requiredRefFields(defs, "Prediction"));
+    assertEquals(Set.of("sourceRefs"), requiredRefFields(defs, "PlanItem"));
+
+    assertEquals(
+      Set.of(
+        "Variable", "Mechanism", "Stakeholder", "Effect", "Hypothesis", "Alternative",
+        "CounterArgument", "FalsificationCondition", "Signal", "PlanItem", "Prediction", "Unknown"
+      ),
+      replyItemTypes(schema),
+      "根对象引用的元素类型集合必须与本用例断言过的集合一致（新增类型时本用例应失败）"
+    );
+  }
+
+  /**
+   * Q1 的回归断言：正文**不得**对所有事实引用类型无条件要求 span。
+   * 旧措辞"for each fact id you cite give that fact's own span"会让模型给
+   * {@code Hypothesis}/{@code Prediction} 补一个它们没有声明的 {@code sourceRefs}，
+   * 在 {@code additionalProperties:false} 下整条回复被拒。
+   */
+  @SuppressWarnings("unchecked")
+  @Test
+  void thePromptScopesTheSourceSpanToTheTypesThatDeclareSourceRefs() {
+    var schema = (Map<String, Object>) JSON.read(service().reasoningReplySchema(), Map.class);
+    var defs = (Map<String, Object>) schema.get("$defs");
+    var prompt = flat(promptFor(news(), ""));
+
+    var withSpan = new TreeSet<String>();
+    var withoutSpan = new TreeSet<String>();
+    for (var name : defs.keySet()) {
+      if (name.equals("Reasoning") || name.equals("SourceRef")) continue;
+      var props = (Map<String, Object>) ((Map<String, Object>) defs.get(name)).get("properties");
+      if (props == null) continue;
+      if (props.containsKey("sourceRefs")) withSpan.add(name); else withoutSpan.add(name);
+    }
+    assertEquals(
+      Set.of("Variable", "Mechanism", "Stakeholder", "Effect", "Alternative", "CounterArgument", "PlanItem", "Unknown"),
+      withSpan,
+      "声明 sourceRefs 的类型集合"
+    );
+    assertEquals(
+      Set.of("Hypothesis", "Prediction", "FalsificationCondition", "Signal"),
+      withoutSpan,
+      "不声明 sourceRefs 的类型集合"
+    );
+
+    assertTrue(
+      prompt.contains("A source span is required only from an item type that declares sourceRefs as well"),
+      "span 要求必须是条件式的，只施加于同时声明 sourceRefs 的类型"
+    );
+    assertTrue(
+      prompt.contains("An item type that declares no sourceRefs must not be given one"),
+      "必须明确禁止给不声明 sourceRefs 的类型添加 span"
+    );
+    assertTrue(
+      prompt.contains("verification indicators (whose items are plan items)"),
+      "verificationIndicators 的元素是 PlanItem，必须被点名，否则模型会漏 span"
+    );
+    assertTrue(
+      prompt.contains("A hypothesis keeps its own reference fields"),
+      "Hypothesis 原有的合法引用字段及其语义必须保留"
+    );
+
+    for (var banned : List.of(
+      "for each fact id you cite give that fact's own span",
+      "an item with a fact id but no span loses its evidence link",
+      "Where the item type also declares sourceRefs"
+    )) {
+      assertFalse(prompt.contains(banned), "无条件 span 措辞回归：" + banned);
+    }
+  }
+
+  /**
+   * 把当前窄回复 schema 导出到构建输出目录，供独立复核直接读取。
+   * 写在 {@code target/} 下（构建产物，不污染任何被跟踪文件）。
+   */
+  @SuppressWarnings("unchecked")
+  @Test
+  void theNarrowReplySchemaIsExportedForIndependentReview() throws Exception {
+    var schema = service().reasoningReplySchema();
+    var parsed = (Map<String, Object>) JSON.read(schema, Map.class);
+    var root = (Map<String, Object>) parsed.get("properties");
+    assertEquals(Boolean.FALSE, parsed.get("additionalProperties"), "根对象仍必须拒绝未声明字段");
+    assertEquals(14, root.size(), "13 个数组 + summary");
+    assertTrue(root.containsKey("summary"), "summary 仍必须存在");
+
+    var out = Path.of("target", "stage2-narrow-reply-schema.json");
+    Files.createDirectories(out.getParent());
+    Files.writeString(out, schema.endsWith("\n") ? schema : schema + "\n");
+    assertTrue(Files.size(out) > 0, "导出的 schema 不得为空");
+    assertTrue(Files.readString(out).contains("\"$defs\""), "导出的 schema 必须含 $defs");
   }
 
   // ---- 3. 去重复：读最后一段不再复述 schema ----------------------------------
