@@ -7,18 +7,18 @@
 | 基线 | `5eba77b`（`feat/wave3a-e2e` 尖端） |
 | 本文档性质 | **新增验证记录**。不修改任何既有文档，不改变任何门禁状态，**不构成人工审查或签署** |
 | 执行者 | DeepSeek Harness（AI Agent）。**不是**人工审查者，**无权**签署 F5 或 Review Gate |
-| 真实调用 | 11 次 strict-tier 实跑 + 3 次手工端点探针，全部走用户已授权的 OpenCode Go 套餐 |
-| G4 状态 | **仍为 FAIL（未变）** |
+| 真实调用 | 14 次 strict-tier 实跑 + 3 次手工端点探针，全部走用户已授权的 OpenCode Go 套餐 |
+| G4 状态 | **先 FAIL（120 s 上限下），上限放宽并修复两处引用顺序后 PASS** —— 见 §9 |
 
 ---
 
 ## 0. 结论
 
-真实 provider 通路**本身可用**：鉴权、结构化输出、模型身份、延迟、错误分类、审计全部正确（strict-tier 的另外 4 个用例通过）。
+真实 provider 通路**本身可用**：鉴权、结构化输出、模型身份、延迟、错误分类、审计全部正确。
 
-但 `deepseek-v4.1-flash` 在项目强制的 **120 秒单次调用上限**内**无法满足** `AnalysisResult` 严格契约。因此 G4 维持 FAIL，只是阻塞理由从"没有可用凭据"改为两条**可复现**的硬约束（§4）。
+在 120 秒单次上限下，`deepseek-v4.1-flash` **无法满足** `AnalysisResult` 严格契约（阻塞理由从"没有可用凭据"改为两条可复现的硬约束，§4）。**该上限经用户批准放宽到 600 秒，并修复了两处引用顺序缺陷之后，strict tier 全绿 —— G4 PASS**（§9）。
 
-本轮**发现并修复了一个真实缺陷**（§3）：两阶段路径下，机制端点解析用错了状态，导致任何"以变量命名因果端点"的合法回复都被拒绝。这不是模型问题，是代码问题。
+本轮**发现并修复了两处真实缺陷**（§3、§9.2）：两阶段路径下，机制端点与二阶影响派生都用错了校验状态，导致任何合法的同回复引用都被拒绝。这不是模型问题，是代码问题。
 
 ---
 
@@ -170,5 +170,50 @@ var mechanisms = deps.reader()
 | `ca36921` | `main` | cherry-pick `2c9d68f`：客户端身份与会话头 |
 | `cca8519` | `feat/wave3a-v5-prompt` | 保存已验证的 v5 双阶段 prompt 改动 |
 | `ffa7152` | `feat/wave3a-v5-prompt` | 机制端点解析顺序修复 + prompt v6 规则 |
+| `516ab84` | `feat/wave3a-v5-prompt` | 契约上限 120 s → 600 s（含镜像常量与生成物） |
+| `b1ff29f` | `feat/wave3a-v5-prompt` | 二阶影响派生顺序修复 + 两处测试随动 |
 
-改动文件：`TwoStageSynthesisService.java`、`prompts/two-stage-reasoning/{prompt.txt,version.txt}`、`TwoStageSynthesisTest.java`、`TwoStagePostgresIntegrationTest.java`、`Stage1ProbeRehearsalTest.java`。
+改动文件：`TwoStageSynthesisService.java`、`prompts/two-stage-reasoning/{prompt.txt,version.txt}`、`TwoStageSynthesisTest.java`、`TwoStagePostgresIntegrationTest.java`、`Stage1ProbeRehearsalTest.java`、`RealModelEndToEndTest.java`、`contracts/openapi.yaml` 及其生成物。
+
+---
+
+## 9. 上限放宽后的通过结果（同日追加）
+
+### 9.1 通过配置
+
+```sh
+export ANALYSIS_PIPELINE_MODE=two-stage
+export AI_FAST_MAX_TOKENS=32000 AI_FAST_TIMEOUT=600
+export AI_TWO_STAGE_FACTS_MAX_TOKENS=32000    AI_TWO_STAGE_FACTS_TIMEOUT=600
+export AI_TWO_STAGE_REASONING_MAX_TOKENS=32000 AI_TWO_STAGE_REASONING_TIMEOUT=600
+export AI_TWO_STAGE_FACTS_MAX_ATTEMPTS=2 AI_TWO_STAGE_FACTS_MAX_REPAIR_ATTEMPTS=2
+export AI_TWO_STAGE_REASONING_MAX_ATTEMPTS=2 AI_TWO_STAGE_REASONING_MAX_REPAIR_ATTEMPTS=2
+export AI_TWO_STAGE_MAX_PROVIDER_CALLS=8
+export AI_REAL_MODEL_E2E=true AI_REAL_MODEL_E2E_ANALYSIS=true
+export AI_REAL_MODEL_E2E_TIMEOUT_SECONDS=600 AI_REAL_MODEL_E2E_JOB_TIMEOUT_SECONDS=1800
+export SPRING_APPLICATION_JSON='{"ai":{"client":{"reasoning-effort":{"FACT_EXTRACTION":"high","SYNTHESIS":"medium"}}}}'
+```
+
+推理档是必要项：`FACT_EXTRACTION=high` 是 stage 1 达到逐字引文与精确 offset 的前提（low/medium 下多次失败，§5 第 4、10 行）；`SYNTHESIS=medium` 是 stage 2 在引用规则上保持严谨的前提。
+
+### 9.2 第二处同类缺陷（STG-08）
+
+上限放宽后 stage 2 走到更深处，暴露同一类顺序问题：**二阶影响 `derivedFromRefs` 必须指向本回复声明的一阶影响**，而校验用的仍是回复前的状态，因此必然解析失败。
+
+修复与 §3 同构：`state.withFirstOrderEffects(firstOrder)`。
+
+### 9.3 结果
+
+| 项 | 命令 | 结果 |
+| --- | --- | --- |
+| 离线全套 | `./scripts/mvn.sh -f apps/api/pom.xml test` | **652 tests, 0 failures, 8 skipped** |
+| 真实 strict tier | `-Dtest=RealModelEndToEndTest`（配置见 §9.1） | **5 tests, 0 failures, 0 skipped** |
+
+strict tier 断言的事实（全部通过）：facts 带精确原文 span（`NEWS_TEXT.substring(start,end).equals(quote)`）、`demo=false`、审计记录真实 provider 与 model 且有实测延迟、`estimatedCost` 保持未知、凭据与原文不进入审计、Web 详情页可读。
+
+### 9.4 口径与限制
+
+1. **通过的是两阶段拓扑**。默认的单体（draft）拓扑在 600 秒下不再超时，但输出未通过校验（`OUTPUT_INVALID`），因此 G4 的通过结论**只对两阶段模式**成立。
+2. 单一样本、单次通过，未做重复试验统计；稳定性未量化。
+3. **本文档不构成审查或签署**。`WAVE3A_REVIEW_GATE_STATUS.md` 的 Review Gate 状态**不由本文档改变**；B-b（人工审查）与 B-c（签署）仍开放。
+4. 按 `WAVE3A_GATE.md` 自身口径，`READY FOR MERGE` 要求 G1–G6 全 PASS；本记录给出 G4 的通过证据，其余五项沿用它原有结论。是否合并仍需人工决定。
