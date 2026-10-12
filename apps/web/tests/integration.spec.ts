@@ -63,19 +63,28 @@ test("a reload mid-analysis restores the durable job and reopens the stream", as
   await page
     .getByLabel("新闻正文 / 补充文字")
     .fill("重连测试：页面刷新后必须恢复未完成的分析任务。");
-  await page.getByRole("button", { name: "Analyze →" }).click();
 
-  // The job id is registered as active before the analysis finishes; that
-  // registration is what makes recovery across a refresh possible.
+  // The job id comes from the analyze response, not from localStorage: the app
+  // clears the active-job key the moment the job finishes, and the draft
+  // pipeline can finish before a test read wins that race. Clearing it on
+  // completion is correct behaviour, so the test must not depend on observing it.
+  const analyzeResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      /\/api\/v1\/news\/[^/]+\/analyze$/.test(response.url()),
+  );
+  await page.getByRole("button", { name: "Analyze →" }).click();
+  const started = await analyzeResponse;
+  expect(started.status()).toBe(202);
+  const jobId = ((await started.json()) as { id?: string }).id;
+  expect(jobId).toBeTruthy();
+
+  // The page must have opened the durable stream for that job.
   await expect
     .poll(() => streamRequests.length, { timeout: 20000 })
     .toBeGreaterThanOrEqual(1);
-  const jobId = await page.evaluate(() =>
-    window.localStorage.getItem("signalframe.activeJob"),
-  );
-  expect(jobId).toBeTruthy();
 
-  // Reload with the job pinned as active: this is exactly the state the app
+  // Reload with the job registered as active: this is exactly the state the app
   // restores from after a refresh or a dropped event stream.
   await page.evaluate(
     (id) => window.localStorage.setItem("signalframe.activeJob", id as string),
