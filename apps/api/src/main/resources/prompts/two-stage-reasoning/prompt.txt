@@ -8,6 +8,9 @@ A mechanism's endpoints are references too: mechanisms[].from and mechanisms[].t
 already exists in the snapshot — an exact variable name, a variable id, a fact id, or text copied verbatim from a
 fact statement. Never put a new concept, a paraphrase or a free-text description in from or to: an endpoint that
 does not resolve is rejected (STG-05.1), so drop the link instead of inventing an endpoint.
+A second-order effect's derivation is a reference too: effects[].derivedFromRefs must name the first-order
+effects it follows from, by the ids you declared in this same reply, and it must not be empty. A derivation
+that names an effect you did not declare is rejected (STG-08).
 A source span is required only from an item type that declares sourceRefs as well, and only such a type may carry
 one: variables, mechanisms, stakeholders, effects, alternatives, counter arguments, verification indicators (whose
 items are plan items) and unknowns. For those, give the exact span the item came from (sourceId, quote, UTF-16

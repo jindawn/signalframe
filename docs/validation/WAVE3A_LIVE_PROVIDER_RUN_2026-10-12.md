@@ -206,14 +206,28 @@ export SPRING_APPLICATION_JSON='{"ai":{"client":{"reasoning-effort":{"FACT_EXTRA
 
 | 项 | 命令 | 结果 |
 | --- | --- | --- |
-| 离线全套 | `./scripts/mvn.sh -f apps/api/pom.xml test` | **652 tests, 0 failures, 8 skipped** |
+| 离线全套 | `./scripts/mvn.sh -f apps/api/pom.xml test` | **662 tests, 0 failures, 8 skipped**（合并进 `main` 后） |
 | 真实 strict tier | `-Dtest=RealModelEndToEndTest`（配置见 §9.1） | **5 tests, 0 failures, 0 skipped** |
 
-strict tier 断言的事实（全部通过）：facts 带精确原文 span（`NEWS_TEXT.substring(start,end).equals(quote)`）、`demo=false`、审计记录真实 provider 与 model 且有实测延迟、`estimatedCost` 保持未知、凭据与原文不进入审计、Web 详情页可读。
+strict tier 断言的事实（通过时全部成立）：facts 带精确原文 span（`NEWS_TEXT.substring(start,end).equals(quote)`）、`demo=false`、审计记录真实 provider 与 model 且有实测延迟、`estimatedCost` 保持未知、凭据与原文不进入审计、Web 详情页可读。
+
+### 9.3.1 稳定性：通过是概率性的
+
+同一配置、同一样本重复运行 4 次，**2 次通过、2 次失败**，失败点各不相同：
+
+| 次 | 结果 | 失败规则 |
+| --- | --- | --- |
+| 1 | **PASS** | — |
+| 2 | FAIL | `effects[]: derivedFromRefs does not resolve to a first-order effect (STG-08)` |
+| 3 | **PASS**（prompt 补入 `derivedFromRefs` 规则后） | — |
+| 4 | FAIL | `falsificationConditions[]: the decision boundary must be observable and decidable by a third party (STG-12)` |
+
+结论：**代码缺陷已消除（§3、§9.2），剩余失败是模型对严格协议规则的遵从度问题**，且不同次失败在不同规则上，因此不是某一条规则没写好。补充说明：`STG-12` 与 prompt 中"原文未确立阈值时不得编造数字"存在固有张力——校验器要求边界含数字或比较运算符，而 prompt 又禁止在没有依据时给出数字；这属于设计取舍，本轮**不改动**校验器或该规则。
 
 ### 9.4 口径与限制
 
 1. **通过的是两阶段拓扑**。默认的单体（draft）拓扑在 600 秒下不再超时，但输出未通过校验（`OUTPUT_INVALID`），因此 G4 的通过结论**只对两阶段模式**成立。
-2. 单一样本、单次通过，未做重复试验统计；稳定性未量化。
-3. **本文档不构成审查或签署**。`WAVE3A_REVIEW_GATE_STATUS.md` 的 Review Gate 状态**不由本文档改变**；B-b（人工审查）与 B-c（签署）仍开放。
-4. 按 `WAVE3A_GATE.md` 自身口径，`READY FOR MERGE` 要求 G1–G6 全 PASS；本记录给出 G4 的通过证据，其余五项沿用它原有结论。是否合并仍需人工决定。
+2. 单一样本；**稳定性已量化：4 次中 2 次通过**（§9.3.1）。因此 G4 的"通过"应表述为**可复现但不稳定**，不是持续通过。
+3. 实际使用含义：真实分析**有时成功、有时以 `OUTPUT_INVALID` 失败**（失败会被分类、逐次审计，并可在界面上重试）；失败不会被降级为 Mock，也不会放宽校验。
+4. **本文档不构成审查或签署**。`WAVE3A_REVIEW_GATE_STATUS.md` 的 Review Gate 状态**不由本文档改变**；B-b（人工审查）与 B-c（签署）仍开放。
+5. 按 `WAVE3A_GATE.md` 自身口径，`READY FOR MERGE` 要求 G1–G6 全 PASS；本记录给出 G4 的通过证据（含其不稳定性），其余五项沿用它原有结论。合并与否由人工决定；本轮已按用户指示将分支并入 `main`（本地，未 push）。

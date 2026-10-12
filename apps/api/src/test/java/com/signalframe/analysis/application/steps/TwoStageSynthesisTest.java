@@ -386,7 +386,7 @@ class TwoStageSynthesisTest {
       result.provenance().promptVersions().contains("two-stage-facts-v1")
     );
     assertTrue(
-      result.provenance().promptVersions().contains("two-stage-reasoning-v6")
+      result.provenance().promptVersions().contains("two-stage-reasoning-v7")
     );
   }
 
@@ -622,7 +622,7 @@ class TwoStageSynthesisTest {
       result.provenance().promptVersions()
     );
     assertTrue(
-      result.provenance().promptVersions().contains("two-stage-reasoning-v6")
+      result.provenance().promptVersions().contains("two-stage-reasoning-v7")
     );
   }
 
@@ -672,7 +672,7 @@ class TwoStageSynthesisTest {
       byPurpose.get(ModelPurpose.FACT_EXTRACTION).promptVersion()
     );
     assertEquals(
-      "two-stage-reasoning-v6",
+      "two-stage-reasoning-v7",
       byPurpose.get(ModelPurpose.SYNTHESIS).promptVersion()
     );
     for (var run : runs.all()) {
