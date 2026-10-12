@@ -203,6 +203,12 @@ Rules the runtime keeps:
 - failure details are redacted before they can reach an audit row or a response:
   the resolved credential is replaced, key-shaped tokens are masked, and the
   detail is single-line and truncated;
+- the redacted detail is also appended to the operator-facing job error and logged
+  at WARN. The audit row keeps its frozen shape and records the classification
+  only, and two very different problems share one code — an empty completion (the
+  model returned no answer, often because reasoning consumed the whole completion
+  ceiling) and an undecodable body. Without the detail, post-mortem of an already
+  paid call is a guess;
 - unknown usage stays `null`. A provider that reports no usage yields null token
   counts and null cost; nothing is fabricated into zeros.
 
@@ -228,14 +234,22 @@ credential value.
 Found while validating the real path; each is outside the runtime boundary of
 this task and none of them was fixed here.
 
-1. **Output framing.** The assembled synthesis prompt ends with the untrusted
-   source JSON after the schema, and states the output contract only as "Output
-   only JSON matching AnalysisResult". Small and mid-size models therefore echo
-   the source object or wrap the result in `{"AnalysisResult": {...}}`. The
-   runtime classifies this correctly as `OUTPUT_INVALID`, repairs once and fails
-   the job cleanly, but a capable frontier model is required for the strict tier
-   to pass. Hardening the prompt/response framing is a separate change because
-   the analysis prompt text is out of scope here.
+1. **Output framing — fixed in `synthesis-v3`.** The synthesis prompt used to
+   state the output contract in its first sentence, then the schema, then the
+   untrusted source last. Small and mid-size models echoed the source object or
+   wrapped the result in `{"analysisResult": {...}}`, because the only text
+   adjacent to the reply was the source. Worse, a provider whose context window is
+   smaller than the prompt truncates from the middle and therefore discarded the
+   contract while keeping the source. `AnalysisPromptFrame` now orders the prompt
+   instructions → guidance → schema → fenced source → **output contract last**, and
+   `AnalysisOutputSchema` projects the schema down to the definitions reachable
+   from `AnalysisResult` (19 of 48, compact instead of pretty-printed), cutting the
+   assembled prompt by ~63% for the reference fixture. The contract also states the
+   values the validator and the strict tier require rather than leaving them as
+   "some boolean": `demo` must be false (it marks offline demo output) and
+   `modifiesExistingHypotheses` must be false. See §7 for the measured sizes and
+   the budget knob. Small models still fail, but they now fail on content, not on
+   shape.
 
 2. **`usage.total_tokens` is mandatory for the client.** The OpenAI Java client
    refuses to decode a `usage` object that omits `total_tokens`, so a provider
@@ -258,6 +272,14 @@ this task and none of them was fixed here.
 5. **Provider-side pricing is never reported**, so `estimatedCost` is always
    `null` in the live path. Cost accounting for real providers is not
    implemented.
+
+6. **`prompt_tokens + max_tokens` must fit the provider context, and nothing
+   enforces it.** The prompt is now small enough to fit an 8 k context in
+   practice, but the runtime still cannot know a provider's window: `ModelProfile`
+   carries `maxTokens` and `timeout`, not a context size. A provider that does not
+   fit the prompt truncates silently and reports a smaller `prompt_tokens` than the
+   prompt actually was, so compare the audited `inputTokens` against the expected
+   size when an otherwise incomprehensible `OUTPUT_INVALID` appears.
 
 ## 6. Verification evidence
 
@@ -284,7 +306,8 @@ Real provider tiers, exercised against a local OpenAI-compatible server
 - the timeout tier passed with two audited `FAILED/TIMEOUT` attempts.
 
 The strict chain tier was not reachable with the models available on this
-machine, which is itself the recorded evidence for gaps 1 and 3:
+machine. The `synthesis-v1` framing produced these results, and is the recorded
+evidence for gap 1:
 
 ```
 gemma3:1b  -> FAILED/OUTPUT_INVALID      model wrapped the result in {"AnalysisResult":{...}}
@@ -292,8 +315,128 @@ llama3:8b  -> FAILED/OUTPUT_INVALID      model echoed the source object instead 
 qwen3:8b   -> FAILED/TIMEOUT, FAILED/TIMEOUT   >120 s for the ~7.6k-token prompt
 ```
 
-In every case the runtime behaved as designed: the call was attempted, the
-output was validated, repair ran once, the failure was classified, and every
-attempt was audited with its own status, latency and error code. A provider that
-satisfies the `AnalysisResult` contract is required for the strict tier to pass.
+Under `synthesis-v2` the same models were re-probed once each, and the failure
+moved from shape to content:
 
+```
+gemma3:1b     -> FAILED/OUTPUT_INVALID   replied with a 71-character fragment
+                                          {"claimType":"FACT","sourceRef":"…"} at a 4 818-token
+                                          prompt that fits its 32 k context: not capable of the task
+llama3:latest -> FAILED/OUTPUT_INVALID   replied with a complete, correctly shaped top-level
+                                          AnalysisResult (all 19 top-level keys, no wrapper) and was
+                                          rejected by bean validation for one missing nested field,
+                                          facts[0].id, at a 4 655-token prompt
+```
+
+Both probes were bounded and stopped after failure; neither is a pass, and the
+strict tier still requires a provider that satisfies the `AnalysisResult`
+contract. In every case the runtime behaved as designed: the call was attempted,
+the output was validated, repair ran once, the failure was classified, and every
+attempt was audited with its own status, latency and error code.
+
+## 7. Prompt size and the context budget
+
+`prompt_tokens + max_tokens` has to fit the provider's context window, and when
+it does not the provider truncates **silently** — Ollama keeps a few leading
+tokens plus the tail and drops the middle. Two consequences are built into the
+runtime:
+
+- The output contract is the **last** section of the assembled prompt, so it is
+  the first material that survives truncation (`AnalysisPromptFrame`).
+- The prompt is a **projection** of the generated schema, not the whole API
+  vocabulary: `AnalysisOutputSchema` keeps only the definitions reachable from
+  `AnalysisResult` and serializes them compactly.
+
+Measured on the reference fixture (a 461-character Chinese news item, domain
+ENERGY, 1 798 characters of strategy guidance):
+
+| section | `synthesis-v1` | `synthesis-v3` |
+| --- | --- | --- |
+| instructions | 1 093 | 1 002 |
+| guidance | 1 798 | 1 798 |
+| schema | 53 804 (48 schemas, pretty-printed) | 13 184 (19 schemas, compact) |
+| source | 461 | 461 |
+| output contract | — | 3 873 |
+| **total** | **57 094** | **20 875 (−63%)** |
+
+`ai.prompt.warn-chars` (default `60000`) is the operator's statement of what this
+deployment expects its provider to accept. Every assembled prompt logs its section
+breakdown at INFO, and crossing the threshold logs a WARN naming the provider and
+model: it changes no behaviour, because the request is still valid and the provider
+may well accept it, but it makes a silent truncation visible before it is
+misdiagnosed as a model defect.
+
+### Reasoning tokens share the completion ceiling
+
+A reasoning model returns `reasoning_content` next to `content` and reports
+`completion_tokens_details.reasoning_tokens`. What that means for the runtime:
+
+- **Only `content` is the completion.** `reasoning_content` is a separate field and
+  is never parsed as the answer. A reply that carries reasoning and no content is
+  reported as `PROVIDER_RESPONSE_INVALID`, not as an empty snapshot: the model did
+  not answer.
+- **Reasoning is already inside `completion_tokens`**, so `input + output == total`
+  still holds and no token is double counted. The reasoning count itself is not
+  persisted: `ModelRun` has no field for it and the audit keeps its frozen shape.
+- **Reasoning spends the `max-tokens` ceiling before any JSON is emitted.** A
+  ceiling sized for the JSON alone truncates the reply mid-object, and truncated
+  JSON fails the schema gate — which looks like a model defect. `analysis.fast`
+  therefore ships `max-tokens: 8192`; the reference snapshot is ~1.2 k estimated
+  tokens, so the reply, a verbose real snapshot and its reasoning all fit.
+  `SynthesisBudgetTest` pins both the configured ceiling and that headroom.
+- `finish_reason` is not interpreted by the runtime: a `length`-truncated body is
+  returned to the validator as-is, so truncation surfaces as a schema failure
+  rather than as a silently accepted partial snapshot.
+
+Sizing guidance, in the order that avoids waste:
+
+1. keep the prompt small rather than raising the output ceiling;
+2. size `max-tokens` to what the reply actually needs — the context has to hold
+   `prompt_tokens + max_tokens`, so an oversized ceiling shrinks the prompt budget
+   and can itself cause truncation;
+3. if a deployment needs a larger context, configure it on the provider
+   (Ollama: `num_ctx`, or `OLLAMA_CONTEXT_LENGTH`) — it is not part of the
+   OpenAI-compatible request that this runtime sends, and no per-model special
+   casing belongs in the adapter.
+
+## 8. Metered single-call runs
+
+A provider that charges per request is rehearsed and run single-shot, so the cost
+of one analysis is knowable before it is spent:
+
+```sh
+AI_RETRY_MAX_ATTEMPTS=1        # one transport attempt, no retry
+AI_RETRY_MAX_REPAIR_ATTEMPTS=0 # no schema-repair round
+AI_FAST_MAX_TOKENS=16384       # completion ceiling for this run
+AI_FAST_TIMEOUT=120            # per-call bound, the contract's maximum
+```
+
+One analysis then issues **exactly one** provider request. That is not a
+configuration hope: `SingleCallRehearsalIntegrationTest` binds these properties
+through the real Spring wiring, reads the effective policy back off the service,
+drives the real API end to end against a local stub, and asserts one request for a
+success and for each failure mode. The same check was run in the real process — a
+dead endpoint with the knobs set produced exactly one audited attempt.
+
+**Budget of that single call.** For the reference fixture the prompt is ~20.9 k
+characters ≈ 5 k tokens, so the ceiling bounds the call at roughly
+`5 k input + 16 384 output ≈ 21.4 k tokens`. Input is auditable afterwards
+(`ModelRun.inputTokens`); the completion is bounded by `max-tokens`, and its split
+between reasoning and JSON is not persisted. Cost stays `UNKNOWN` because no
+provider reports pricing — do not infer it.
+
+**Timeout risk.** Raising `max-tokens` does not extend the bound, and 120 s is the
+`ModelProfile` contract maximum. Filling a 16 384-token ceiling inside 120 s needs
+~136 output tokens/s sustained including reasoning; a slower model or a long
+reasoning trace turns a truncation into a `TIMEOUT` instead. The bound has to
+cover the whole generation, so a large ceiling and a short bound are in tension —
+decide which failure is cheaper for the run.
+
+**Reading an empty completion.** The audit row keeps only `errorType`, so the job
+error carries the redacted cause. `PROVIDER_RESPONSE_INVALID` plus
+`finish_reason=LENGTH` means the provider stopped at the ceiling before any
+content (raise the ceiling or reduce reasoning); `finish_reason=CONTENT_FILTER`
+means it was refused; `finish_reason=UNKNOWN` means no reason was reported;
+"could not be decoded" means the body arrived but the client could not read it,
+which is not an empty answer. Reasoning text and the raw response are never
+recorded.

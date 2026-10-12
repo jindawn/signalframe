@@ -78,7 +78,13 @@ public class AnalysisJobService {
               ? e.getMessage()
               : "分析失败，请重试。"
           );
-          log.warn("Analysis job failed: {}", e.getClass().getSimpleName());
+          // An unexpected failure is otherwise undiagnosable: the job row keeps a
+          // generic message and the class name alone does not say what broke.
+          log.warn(
+            "Analysis job failed: {} — {}",
+            e.getClass().getSimpleName(),
+            bounded(e.getMessage())
+          );
         } finally {
           MDC.clear();
         }
@@ -92,6 +98,13 @@ public class AnalysisJobService {
       );
     }
     return job;
+  }
+
+  /** Single-line, bounded so a decoder message cannot dump a payload into the log. */
+  private static String bounded(String value) {
+    if (value == null) return "<no message>";
+    var compact = value.replaceAll("\\s+", " ").trim();
+    return compact.length() <= 300 ? compact : compact.substring(0, 300) + "...";
   }
 
   public AnalysisJob get(UUID id) {

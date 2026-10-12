@@ -142,10 +142,13 @@ class StageModelClientTest {
     assertEquals(StageFailure.Kind.PROVIDER_FAILURE, failure.kind());
     assertEquals(1, gateway.requests().size());
     assertEquals(1, runs.all().size());
-    assertFalse(
-      failure.getMessage().contains("credential rejected") &&
-      failure.jobMessage().contains("credential rejected")
+    // The redacted classification now travels with the operator copy so a failed
+    // paid attempt can be diagnosed; the credential never does.
+    assertTrue(
+      failure.jobMessage().contains("AUTHENTICATION"),
+      failure.jobMessage()
     );
+    assertTrue(failure.jobMessage().contains("FactExtraction"));
   }
 
   @Test
@@ -164,15 +167,21 @@ class StageModelClientTest {
   }
 
   @Test
-  void jobMessagesAreClassifiedOperatorCopyWithoutProviderDetails() {
+  void jobMessagesAreClassifiedRedactedOperatorCopy() {
     var network = new StageFailure(
       "FactExtraction",
       StageFailure.Kind.PROVIDER_FAILURE,
       "PROVIDER_UNAVAILABLE: 503 from sk-test-sentinel-0987654321"
     );
-    assertFalse(network.jobMessage().contains("sk-"));
-    assertFalse(network.jobMessage().contains("PROVIDER_UNAVAILABLE"));
+    // Credential-free and bounded, but it now names the classification: an
+    // operator cannot tell an expired key from a throttled quota otherwise.
+    assertFalse(network.jobMessage().contains("sk-"), network.jobMessage());
+    assertTrue(
+      network.jobMessage().contains("PROVIDER_UNAVAILABLE"),
+      network.jobMessage()
+    );
     assertTrue(network.jobMessage().contains("FactExtraction"));
+    assertFalse(network.jobMessage().contains("\n"));
 
     var timeout = new StageFailure(
       "Synthesis",

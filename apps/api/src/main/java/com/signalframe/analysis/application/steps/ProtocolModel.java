@@ -1,5 +1,6 @@
 package com.signalframe.analysis.application.steps;
 
+import com.signalframe.contract.ClaimType;
 import com.signalframe.contract.SourceRef;
 import java.time.Instant;
 import java.util.*;
@@ -144,19 +145,45 @@ public final class ProtocolModel {
   }
 
   /** STG-03 fact: an exact source span, never independently verified truth. */
+  /**
+   * A reported claim.
+   *
+   * <p>The components mirror the generated {@code contract.Fact} exactly, because
+   * that record is what the stage prompt shows the model as the schema its reply
+   * must match. {@code type} and {@code confidence} are required by that contract,
+   * so a model that follows the prompt necessarily emits them; a reader whose DTO
+   * lacked them failed every compliant reply. {@code type} is carried, never
+   * trusted: the facts reader rejects anything but {@link ClaimType#FACT}.
+   */
   public record Fact(
     UUID id,
+    ClaimType type,
     String statement,
     String reasoning,
+    Integer confidence,
     List<SourceRef> sourceRefs,
     ProofStatus verificationStatus
   ) {
     public Fact {
       id = id == null ? UUID.randomUUID() : id;
+      // Stage 1 only ever produces FACT; an absent declaration is the conservative
+      // default, and a different declared type is rejected by the reader.
+      type = type == null ? ClaimType.FACT : type;
       sourceRefs = sourceRefs == null ? List.of() : List.copyOf(sourceRefs);
       verificationStatus = verificationStatus == null
         ? ProofStatus.REPORTED
         : verificationStatus;
+    }
+
+    /** The shape internal callers use: the stage vocabulary without the contract's extras. */
+    public Fact(
+      UUID id,
+      String statement,
+      String reasoning,
+      List<SourceRef> sourceRefs,
+      ProofStatus verificationStatus
+    ) {
+      this(id, ClaimType.FACT, statement, reasoning, null, sourceRefs, verificationStatus);
     }
   }
 

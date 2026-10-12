@@ -6,6 +6,8 @@ import com.signalframe.shared.*;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -26,6 +28,13 @@ public class ModelAnalysisService {
 
   private static final String OUTPUT_FAILED = "MODEL_OUTPUT_FAILED";
 
+  /** Assumed when the deployment does not state a prompt budget. */
+  static final long DEFAULT_PROMPT_WARN_CHARS = 60_000L;
+
+  private static final Logger log = LoggerFactory.getLogger(
+    ModelAnalysisService.class
+  );
+
   private final ModelRouter router;
   private final ModelGateway gateway;
   private final ModelRunRepository runs;
@@ -33,7 +42,9 @@ public class ModelAnalysisService {
   private final PromptCatalog prompts;
   private final JsonCodec json;
   private final ModelRetryPolicy retryPolicy;
-  private final String schema;
+  private final long promptWarnChars;
+  /** The projected AnalysisResult schema embedded in every synthesis prompt. */
+  private final String outputSchema;
 
   @Autowired
   public ModelAnalysisService(
@@ -45,7 +56,12 @@ public class ModelAnalysisService {
     JsonCodec json,
     @Value("${ai.retry.max-attempts:2}") int maxAttempts,
     @Value("${ai.retry.max-repair-attempts:1}") int maxRepairAttempts,
-    @Value("${ai.retry.backoff-ms:250}") long backoffMs
+    @Value("${ai.retry.backoff-ms:250}") long backoffMs,
+    @Value(
+      "${ai.prompt.warn-chars:" +
+      DEFAULT_PROMPT_WARN_CHARS +
+      "}"
+    ) long promptWarnChars
   ) {
     this(
       router,
@@ -58,7 +74,8 @@ public class ModelAnalysisService {
         maxAttempts,
         maxRepairAttempts,
         Duration.ofMillis(Math.max(0L, backoffMs))
-      )
+      ),
+      promptWarnChars
     );
   }
 
@@ -82,6 +99,28 @@ public class ModelAnalysisService {
     JsonCodec json,
     ModelRetryPolicy retryPolicy
   ) {
+    this(
+      router,
+      gateway,
+      runs,
+      validator,
+      prompts,
+      json,
+      retryPolicy,
+      DEFAULT_PROMPT_WARN_CHARS
+    );
+  }
+
+  ModelAnalysisService(
+    ModelRouter router,
+    ModelGateway gateway,
+    ModelRunRepository runs,
+    AnalysisResultValidator validator,
+    PromptCatalog prompts,
+    JsonCodec json,
+    ModelRetryPolicy retryPolicy,
+    long promptWarnChars
+  ) {
     this.router = router;
     this.gateway = gateway;
     this.runs = runs;
@@ -89,7 +128,8 @@ public class ModelAnalysisService {
     this.prompts = prompts;
     this.json = json;
     this.retryPolicy = retryPolicy;
-    this.schema = readSchema();
+    this.promptWarnChars = promptWarnChars;
+    this.outputSchema = AnalysisOutputSchema.render(json);
   }
 
   /** Bounds currently in force; exposed for diagnostics and tests. */
@@ -185,12 +225,31 @@ public class ModelAnalysisService {
           "FAILED",
           failure.code()
         );
+        // The audit row keeps the frozen shape and records the classification
+        // only, so the redacted detail is surfaced here instead. Without it an
+        // operator cannot tell "the provider returned an empty completion" from
+        // "the body could not be decoded" - two different problems with the same
+        // PROVIDER_RESPONSE_INVALID code - and the paid call is already spent.
+        log.warn(
+          "Model call failed provider={} model={} code={} retryable={} detail={}",
+          profile.provider(),
+          profile.model(),
+          failure.code(),
+          failure.retryable(),
+          failure.detail()
+        );
         if (
           !failure.retryable() || attempt == retryPolicy.maxAttempts()
         ) throw toApplicationException(failure);
         pause();
         continue;
       } catch (RuntimeException unexpected) {
+        log.warn(
+          "Unclassified adapter failure provider={} model={} type={}",
+          profile.provider(),
+          profile.model(),
+          unexpected.getClass().getSimpleName()
+        );
         audit(
           jobId,
           correlationId,
@@ -232,23 +291,44 @@ public class ModelAnalysisService {
     boolean repair,
     String repairHint
   ) {
-    var text = new StringBuilder(prompt.text())
-      .append('\n')
-      .append(guidance)
-      .append("\nSchema:\n")
-      .append(schema)
-      .append("\nUNTRUSTED SOURCE:\n")
-      .append(json.write(news));
-    if (repair) {
-      text.append("\nPrevious output failed schema/provenance validation");
-      if (repairHint != null) text.append(" (").append(repairHint).append(')');
-      text.append(". Return corrected JSON only.");
+    var framed = AnalysisPromptFrame.frame(
+      prompt,
+      guidance,
+      outputSchema,
+      news,
+      repair,
+      repairHint,
+      json
+    );
+    var sections = framed.sections();
+    log.info(
+      "Synthesis prompt assembled provider={} model={} promptVersion={} {}",
+      profile.provider(),
+      profile.model(),
+      prompt.version(),
+      sections
+    );
+    if (sections.total() > promptWarnChars) {
+      // Not an error: the request is still valid and the provider may accept it.
+      // It is a warning because a provider whose context window is smaller than
+      // this prompt will truncate silently, and the resulting output failure looks
+      // like a model defect. `ai.prompt.warn-chars` is the operator's statement of
+      // what this deployment expects its provider to accept.
+      log.warn(
+        "Synthesis prompt is {} characters, above ai.prompt.warn-chars={}: provider={} model={} maxTokens={}. " +
+        "A provider with a smaller context window will truncate this prompt; compare the audited inputTokens of the ModelRun against the expected prompt size.",
+        sections.total(),
+        promptWarnChars,
+        profile.provider(),
+        profile.model(),
+        profile.maxTokens()
+      );
     }
     return new ModelRequest(
       jobId,
       ModelPurpose.SYNTHESIS,
       prompt.version(),
-      text.toString(),
+      framed.text(),
       news,
       profile,
       repair
@@ -274,26 +354,47 @@ public class ModelAnalysisService {
     var usage = response == null || response.usage() == null
       ? new ModelUsage(null, null, null, null)
       : response.usage();
-    runs.save(
-      new ModelRun(
-        UUID.randomUUID(),
-        jobId,
-        response == null ? profile.provider() : response.provider(),
-        response == null ? profile.model() : response.model(),
-        ModelPurpose.SYNTHESIS,
-        promptVersion,
-        startedAt,
-        completedAt,
-        Duration.between(startedAt, completedAt).toMillis(),
-        usage.inputTokens(),
-        usage.outputTokens(),
-        usage.totalTokens(),
-        usage.estimatedCost(),
-        status,
-        errorCode,
-        correlationId
-      )
+    var run = new ModelRun(
+      UUID.randomUUID(),
+      jobId,
+      response == null ? profile.provider() : response.provider(),
+      response == null ? profile.model() : response.model(),
+      ModelPurpose.SYNTHESIS,
+      promptVersion,
+      startedAt,
+      completedAt,
+      Duration.between(startedAt, completedAt).toMillis(),
+      usage.inputTokens(),
+      usage.outputTokens(),
+      usage.totalTokens(),
+      usage.estimatedCost(),
+      status,
+      errorCode,
+      correlationId
     );
+    runs.save(run);
+    // The same facts the audit row carries, on the log, so a metered run can be
+    // reported without reaching for the database. Tokens and cost stay explicit
+    // about being unknown; no prompt, response body or credential is included.
+    log.info(
+      "ModelRun provider={} model={} purpose={} promptVersion={} status={} errorType={} latencyMs={} inputTokens={} outputTokens={} totalTokens={} estimatedCost={}",
+      run.provider(),
+      run.model(),
+      run.purpose(),
+      run.promptVersion(),
+      run.status(),
+      run.errorType(),
+      run.latencyMs(),
+      unknown(run.inputTokens()),
+      unknown(run.outputTokens()),
+      unknown(run.totalTokens()),
+      unknown(run.estimatedCost())
+    );
+  }
+
+  /** Renders an absent measurement as UNKNOWN rather than as a fabricated zero. */
+  private static Object unknown(Object value) {
+    return value == null ? "UNKNOWN" : value;
   }
 
   private void pause() {
@@ -335,17 +436,25 @@ public class ModelAnalysisService {
         case TIMEOUT -> "模型调用超时，请稍后重试。";
         case RATE_LIMITED, PROVIDER_UNAVAILABLE, TRANSPORT -> "模型服务暂时不可用，请稍后重试。";
         default -> "模型调用失败，请稍后重试。";
-      }
+      } +
+      diagnostic(failure)
     );
   }
 
-  private static String readSchema() {
-    try {
-      return new org.springframework.core.io.ClassPathResource(
-        "analysis-result.schema.json"
-      ).getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
-    } catch (Exception e) {
-      throw new IllegalStateException("Analysis schema resource missing", e);
-    }
+  /**
+   * The redacted provider detail, appended to the operator-facing message.
+   *
+   * <p>{@code detail()} is already credential-free, single-line and capped, and it
+   * is what separates two very different problems that share one code: an empty
+   * completion (the model produced no answer, often because reasoning consumed the
+   * completion ceiling) from an undecodable body. The audit row keeps its frozen
+   * shape and the classification only, so this is where the distinction is
+   * surfaced; the alternative is an operator guessing after a paid call is spent.
+   */
+  private static String diagnostic(ModelInvocationException failure) {
+    var detail = failure.detail();
+    return detail == null || detail.isBlank()
+      ? ""
+      : "（" + failure.code() + ": " + detail + "）";
   }
 }

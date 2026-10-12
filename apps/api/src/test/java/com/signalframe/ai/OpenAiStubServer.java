@@ -14,19 +14,19 @@ import java.util.function.Function;
  * Minimal OpenAI-compatible HTTP stub built on the JDK server, so provider
  * tests need no paid key and no extra test dependency.
  */
-final class OpenAiStubServer implements AutoCloseable {
+public final class OpenAiStubServer implements AutoCloseable {
 
-  record Reply(int status, String body, long delayMs) {
+  public record Reply(int status, String body, long delayMs) {
 
-    static Reply ok(String body) {
+    public static Reply ok(String body) {
       return new Reply(200, body, 0);
     }
 
-    static Reply status(int status, String body) {
+    public static Reply status(int status, String body) {
       return new Reply(status, body, 0);
     }
 
-    static Reply delayed(String body, long delayMs) {
+    public static Reply delayed(String body, long delayMs) {
       return new Reply(200, body, delayMs);
     }
   }
@@ -38,36 +38,36 @@ final class OpenAiStubServer implements AutoCloseable {
   private final List<String> authorizations = new CopyOnWriteArrayList<>();
   private final List<Map<String, String>> headerMaps = new CopyOnWriteArrayList<>();
 
-  OpenAiStubServer(Function<String, Reply> responder) throws IOException {
+  public OpenAiStubServer(Function<String, Reply> responder) throws IOException {
     this.responder = responder;
     this.server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
     this.server.createContext("/", this::handle);
     this.server.start();
   }
 
-  String baseUrl() {
+  public String baseUrl() {
     return "http://127.0.0.1:" + server.getAddress().getPort();
   }
 
-  List<String> bodies() {
+  public List<String> bodies() {
     return List.copyOf(bodies);
   }
 
-  List<String> paths() {
+  public List<String> paths() {
     return List.copyOf(paths);
   }
 
-  List<String> authorizations() {
+  public List<String> authorizations() {
     return List.copyOf(authorizations);
   }
 
   /** Every header of every received request, keyed case-insensitively by name. */
-  List<Map<String, String>> headerMaps() {
+  public List<Map<String, String>> headerMaps() {
     return List.copyOf(headerMaps);
   }
 
   /** One header of one request, or null when the request did not carry it. */
-  String header(int requestIndex, String name) {
+  public String header(int requestIndex, String name) {
     if (requestIndex >= headerMaps.size()) return null;
     var headers = headerMaps.get(requestIndex);
     for (var entry : headers.entrySet()) if (
@@ -76,7 +76,19 @@ final class OpenAiStubServer implements AutoCloseable {
     return null;
   }
 
-  static String completion(
+  /**
+   * Forgets every recorded request. A stub shared by several tests in one class
+   * would otherwise report a cumulative request count, and "exactly one request
+   * per analysis" is precisely what such a test has to measure.
+   */
+  public void clear() {
+    bodies.clear();
+    paths.clear();
+    authorizations.clear();
+    headerMaps.clear();
+  }
+
+  public static String completion(
     String content,
     int promptTokens,
     int completionTokens
@@ -100,7 +112,7 @@ final class OpenAiStubServer implements AutoCloseable {
    * A completion whose body carries no usage at all, like some self-hosted
    * OpenAI-compatible servers. The runtime must report unknown, not zeros.
    */
-  static String completionWithoutUsage(String content) {
+  public static String completionWithoutUsage(String content) {
     return (
       "{\"id\":\"chatcmpl-stub\",\"object\":\"chat.completion\",\"created\":1," +
       "\"model\":\"stub\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\"," +
@@ -114,7 +126,7 @@ final class OpenAiStubServer implements AutoCloseable {
    * A completion whose usage omits {@code total_tokens}. Real gateways do this,
    * and the OpenAI client refuses to decode such a body.
    */
-  static String completionWithoutTotalUsage(
+  public static String completionWithoutTotalUsage(
     String content,
     int promptTokens,
     int completionTokens
@@ -141,7 +153,7 @@ final class OpenAiStubServer implements AutoCloseable {
    * for the reasoning tokens inside the reported completion count rather than on
    * top of it.
    */
-  static String reasoningCompletion(
+  public static String reasoningCompletion(
     String content,
     String reasoning,
     int promptTokens,
@@ -171,7 +183,7 @@ final class OpenAiStubServer implements AutoCloseable {
   }
 
   /** A reasoning-only reply: {@code reasoning_content} set, {@code content} empty. */
-  static String reasoningOnlyCompletion(String reasoning) {
+  public static String reasoningOnlyCompletion(String reasoning) {
     return (
       "{\"id\":\"chatcmpl-stub\",\"object\":\"chat.completion\",\"created\":1," +
       "\"model\":\"stub\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\"," +
@@ -182,7 +194,56 @@ final class OpenAiStubServer implements AutoCloseable {
     );
   }
 
-  static String error(int status, String message) {
+  /**
+   * An empty completion with a stated finish reason, and reasoning text that must
+   * never be mistaken for the answer nor echoed into a log or an audit row.
+   *
+   * @param finishReason the reason to report, or null to omit the field entirely
+   *                     (which the runtime must report as UNKNOWN rather than guess)
+   */
+  public static String emptyContentCompletion(
+    String reasoning,
+    String finishReason,
+    int promptTokens,
+    int completionTokens
+  ) {
+    var choice = new StringBuilder(
+      "{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"\""
+    );
+    if (reasoning != null) choice
+      .append(",\"reasoning_content\":")
+      .append(AiTestFixtures.quote(reasoning));
+    choice.append("}");
+    if (finishReason != null) choice
+      .append(",\"finish_reason\":")
+      .append(AiTestFixtures.quote(finishReason));
+    choice.append("}");
+    return (
+      "{\"id\":\"chatcmpl-stub\",\"object\":\"chat.completion\",\"created\":1," +
+      "\"model\":\"stub\",\"choices\":[" +
+      choice +
+      "],\"usage\":{\"prompt_tokens\":" +
+      promptTokens +
+      ",\"completion_tokens\":" +
+      completionTokens +
+      ",\"total_tokens\":" +
+      (promptTokens + completionTokens) +
+      ",\"completion_tokens_details\":{\"reasoning_tokens\":" +
+      completionTokens +
+      "}}}"
+    );
+  }
+
+  /**
+   * A 200 response whose body cannot be decoded into a completion. The runtime
+   * must report this as an undecodable body, never as "the model returned
+   * nothing": the model may well have answered.
+   */
+  public static String undecodableCompletion() {
+    return "{\"id\":\"chatcmpl-stub\",\"object\":\"chat.completion\"}";
+  }
+
+  public static String error(int status, String message) {
     return (
       "{\"error\":{\"message\":" +
       AiTestFixtures.quote(message) +

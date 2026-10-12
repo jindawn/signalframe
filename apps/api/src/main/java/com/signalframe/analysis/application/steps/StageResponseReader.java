@@ -1,6 +1,7 @@
 package com.signalframe.analysis.application.steps;
 
 import com.signalframe.analysis.application.steps.ProtocolModel.*;
+import com.signalframe.contract.ClaimType;
 import com.signalframe.contract.SourceRef;
 import com.signalframe.shared.JsonCodec;
 import java.util.*;
@@ -52,6 +53,10 @@ public class StageResponseReader {
   // ---- stage entry points -------------------------------------------------
 
   public Artifacts<Fact> facts(String raw, PipelineState state) {
+    // Checked before either path: an illegal enum must be refused no matter which
+    // shape the reply takes, and the snapshot fallback must not quietly accept what
+    // the envelope path would have rejected.
+    requireDeclaredEnums(raw);
     var envelope = envelope(raw, FactsEnvelope.class);
     if (envelope.present()) return factsEnvelope(envelope.get(), state);
     var snapshot = snapshot(raw);
@@ -63,7 +68,9 @@ public class StageResponseReader {
         snapshot.get().demo()
       );
     }
-    throw wrongShape(raw, "facts");
+    // The envelope failure is the first and real cause; a shape complaint about the
+    // snapshot path must not overwrite it.
+    throw wrongShape(raw, "facts", envelope.diagnosis());
   }
 
   public Artifacts<Variable> variables(String raw, PipelineState state) {
@@ -96,11 +103,58 @@ public class StageResponseReader {
     if (envelope.present()) return mechanismsEnvelope(envelope.get(), state);
     var snapshot = snapshot(raw);
     if (snapshot.isPresent()) {
-      return new Artifacts<>(
-        strictMechanisms(snapshot.get().mechanisms(state.facts()), state),
-        snapshot.get().unknowns(),
-        snapshot.get().demo()
+      var unknown = new ArrayList<>(snapshot.get().unknowns());
+      var kept = new ArrayList<Mechanism>();
+      for (var m : snapshot.get().mechanisms(state.facts())) {
+        // A declared level is only honoured when the mechanism can carry it. STG-05
+        // requires a fact basis for SUPPORTED and PLAUSIBLE, and the generated
+        // CausalLink cannot carry assumptions or a corroborating signal (see the
+        // contract gap in the validation report), so a level that cannot be
+        // supported here is demoted and the demotion is stated, never silent.
+        var unsupportedLevel =
+          (m.supportLevel() == SupportLevel.SUPPORTED ||
+            m.supportLevel() == SupportLevel.PLAUSIBLE) &&
+          m.factRefs().isEmpty();
+        if (unsupportedLevel) {
+          unknown.add(
+            new Unknown(
+              UUID.randomUUID(),
+              "A declared mechanism was demoted because it named no fact support",
+              "STG-05 requires a fact reference for " +
+              m.supportLevel() +
+              ", and this mechanism declares none",
+              "a mechanism whose factRefs resolve inside the snapshot"
+            )
+          );
+          kept.add(
+            new Mechanism(
+              m.id(),
+              m.from(),
+              m.to(),
+              SupportLevel.SPECULATIVE,
+              m.explanation(),
+              m.reasoning(),
+              m.assumptions(),
+              m.factRefs(),
+              m.sourceRefs(),
+              m.corroboratingSignal(),
+              m.confidence()
+            )
+          );
+          continue;
+        }
+        kept.add(m);
+      }
+      var strict = strictMechanisms(kept, state);
+      if (strict.size() < kept.size()) unknown.add(
+        new Unknown(
+          UUID.randomUUID(),
+          "A speculative mechanism was not carried into the snapshot",
+          "STG-05 requires a corroborating signal for a SPECULATIVE link, and the generated CausalLink has no field for one",
+          "a mechanism at a support level the contract can express with its support fields"
+        )
       );
+      return new Artifacts<>(strict, unknown, snapshot.get().demo());
     }
     throw wrongShape(raw, "mechanisms");
   }
@@ -348,7 +402,17 @@ public class StageResponseReader {
     if (snapshot.isPresent()) {
       var values = snapshot.get().falsificationConditions(state.hypotheses());
       var unknown = new ArrayList<>(snapshot.get().unknowns());
-      if (!values.isEmpty()) unknown.add(
+      // Only note the gap when the parts really are absent: a producer that renders
+      // observable/comparison/decisionBoundary into the condition's reasoning
+      // trailer (the documented representation) must not be told it omitted them.
+      boolean missingParts = values
+        .stream()
+        .anyMatch(c ->
+          SnapshotEnvelope.NOT_DECLARED.equals(c.observable()) ||
+          SnapshotEnvelope.NOT_DECLARED.equals(c.comparison()) ||
+          SnapshotEnvelope.NOT_DECLARED.equals(c.decisionBoundary())
+        );
+      if (missingParts) unknown.add(
         new Unknown(
           UUID.randomUUID(),
           "The v0.1 snapshot states falsification conditions without a comparison or decision boundary (SCH-06 pending)",
@@ -424,15 +488,25 @@ public class StageResponseReader {
     var snapshot = snapshot(raw);
     if (snapshot.isPresent()) {
       var unknown = new ArrayList<>(snapshot.get().unknowns());
-      unknown.add(
-        new Unknown(
-          UUID.randomUUID(),
-          "Predictions are not part of the v0.1 snapshot schema (SCH-07 pending)",
-          "the contract cannot carry a PREDICTION artifact, so no dated prediction can be persisted",
-          "the v0.2 snapshot schema with predictions"
-        )
-      );
-      return new Artifacts<>(List.of(), unknown, snapshot.get().demo());
+      var kept = new ArrayList<Prediction>();
+      for (var p : snapshot.get().predictions()) {
+        var problem = predictionProblem(p, state);
+        if (problem.isPresent()) {
+          // A prediction the protocol cannot accept is dropped *visibly*: never
+          // silently, and never rewritten into something that would pass.
+          unknown.add(
+            new Unknown(
+              UUID.randomUUID(),
+              "A declared prediction was not carried into the snapshot",
+              problem.get(),
+              "a prediction with a resolvable hypothesis, a future expectedBy, an observable, a venue and verification criteria"
+            )
+          );
+          continue;
+        }
+        kept.add(p);
+      }
+      return new Artifacts<>(List.copyOf(kept), unknown, snapshot.get().demo());
     }
     throw wrongShape(raw, "predictions");
   }
@@ -480,21 +554,177 @@ public class StageResponseReader {
     var snapshot = snapshot(raw);
     if (snapshot.isPresent()) {
       var unknown = new ArrayList<>(snapshot.get().unknowns());
-      var delivered = snapshot.get().plan(state.facts(), state.hypotheses(), state.predictions());
-      if (!delivered.isEmpty()) unknown.add(
-        new Unknown(
-          UUID.randomUUID(),
-          "The v0.1 snapshot's indicators cannot serve as verification plan items (SCH-08 pending)",
-          "an indicator carries no distinguishable supporting/contradicting result and no deadline",
-          "plan items with supportingResult, contradictingResult and deadline"
-        )
-      );
-      return new Artifacts<>(List.of(), unknown, snapshot.get().demo());
+      var kept = new ArrayList<PlanItem>();
+      for (var item : snapshot
+        .get()
+        .plan(state.facts(), state.hypotheses(), state.predictions())) {
+        var problem = planItemProblem(item, state);
+        if (problem.isPresent()) {
+          unknown.add(
+            new Unknown(
+              UUID.randomUUID(),
+              "A declared verification plan item was not carried into the snapshot",
+              problem.get(),
+              "a plan item with a distinguishable supporting and contradicting result, a deadline, a checkable venue and a hypothesis or prediction it serves"
+            )
+          );
+          continue;
+        }
+        kept.add(item);
+      }
+      return new Artifacts<>(List.copyOf(kept), unknown, snapshot.get().demo());
     }
     throw wrongShape(raw, "plan");
   }
 
+  // ---- one rule set per artifact -----------------------------------------
+  //
+  // A stage envelope is strict: a model answering a stage prompt must comply, so a
+  // violation fails the stage. A snapshot is the reference-fixture path and is
+  // deliberately lenient: an item the protocol cannot accept is dropped *with an
+  // explicit UNKNOWN* naming the reason, so nothing is lost silently and nothing is
+  // rewritten into something that would pass.
+
+  /** Empty when the prediction satisfies STG-14, otherwise the reason it does not. */
+  private Optional<String> predictionProblem(Prediction p, PipelineState state) {
+    if (!hasText(p.statement())) return Optional.of(
+      "predictions[]: statement is required"
+    );
+    if (!hasText(p.observable())) return Optional.of(
+      "predictions[]: observable is required (STG-14)"
+    );
+    if (!hasText(p.verificationCriteria())) return Optional.of(
+      "predictions[]: verificationCriteria is required (STG-14.2)"
+    );
+    if (!hasText(p.whereToCheck())) return Optional.of(
+      "predictions[]: whereToCheck is required (STG-14.3)"
+    );
+    if (p.expectedBy() == null) return Optional.of(
+      "predictions[]: expectedBy is required; a prediction must be time bounded (STG-14)"
+    );
+    if (!p.expectedBy().isAfter(state.snapshotCreatedAt())) return Optional.of(
+      "predictions[]: expectedBy must be in the future relative to snapshot creation (STG-14.1)"
+    );
+    if (p.verificationCriteria().equalsIgnoreCase(p.statement().trim())) {
+      return Optional.of(
+        "predictions[]: verificationCriteria must separate confirmation, partial confirmation and rejection (STG-14.2)"
+      );
+    }
+    if (state.hypotheses().stream().noneMatch(h -> h.id().equals(p.hypothesisRef()))) {
+      return Optional.of(
+        "predictions[]: hypothesisRef does not resolve inside this snapshot (PR-09)"
+      );
+    }
+    return Optional.empty();
+  }
+
+  /** Empty when the plan item satisfies STG-15, otherwise the reason it does not. */
+  private Optional<String> planItemProblem(PlanItem p, PipelineState state) {
+    if (!hasText(p.whatToCheck())) return Optional.of(
+      "plan[]: whatToCheck is required"
+    );
+    if (!hasText(p.whereToCheck())) return Optional.of(
+      "plan[]: whereToCheck is required"
+    );
+    if (!hasText(p.supportingResult())) return Optional.of(
+      "plan[]: supportingResult is required (STG-15.2)"
+    );
+    if (!hasText(p.contradictingResult())) return Optional.of(
+      "plan[]: contradictingResult is required (STG-15.2)"
+    );
+    if (p.supportingResult().equals(p.contradictingResult())) return Optional.of(
+      "plan[]: supportingResult and contradictingResult must be distinguishable in advance (STG-15.2)"
+    );
+    if (p.deadline() == null) return Optional.of(
+      "plan[]: a verification plan item needs a deadline (STG-15)"
+    );
+    if (genericVenue(p.whereToCheck())) return Optional.of(
+      "plan[]: whereToCheck must name a checkable venue or dataset (STG-15.3)"
+    );
+    if (p.hypothesisRef() == null && p.predictionRef() == null) {
+      return Optional.of(
+        "plan[]: a plan item must serve a hypothesis or a prediction (STG-15)"
+      );
+    }
+    if (
+      p.hypothesisRef() != null &&
+      state.hypotheses().stream().noneMatch(h -> h.id().equals(p.hypothesisRef()))
+    ) return Optional.of(
+      "plan[]: hypothesisRef does not resolve inside this snapshot (PR-09)"
+    );
+    if (
+      p.predictionRef() != null &&
+      state.predictions().stream().noneMatch(x -> x.id().equals(p.predictionRef()))
+    ) return Optional.of(
+      "plan[]: predictionRef does not resolve inside this snapshot (PR-09)"
+    );
+    return Optional.empty();
+  }
+
+  private static boolean hasText(String value) {
+    return value != null && !value.isBlank();
+  }
+
   // ---- shared validation -------------------------------------------------
+
+  /**
+   * Rejects an illegal enum declaration at the raw JSON level.
+   *
+   * <p>Jackson maps an unknown enum value to {@code null}, and the DTO's compact
+   * constructor then applies its conservative default. The effect is that a model
+   * declaring {@code "verificationStatus":"NOT_A_STATUS"} was silently recorded as
+   * {@code REPORTED} — an epistemic status the model never claimed. Reading the
+   * declared value before the default is applied is the only way to tell "not
+   * declared" from "declared illegally", and the two must not be conflated.
+   */
+  private void requireDeclaredEnums(String raw) {
+    Map<String, Object> tree;
+    try {
+      tree = json.read(raw, Map.class);
+    } catch (RuntimeException notJson) {
+      return; // a malformed reply is refused by the paths that own that decision
+    }
+    if (!(tree.get("facts") instanceof List<?> facts)) return;
+    for (int i = 0; i < facts.size(); i++) {
+      if (!(facts.get(i) instanceof Map<?, ?> fact)) continue;
+      requireDeclaredEnum(
+        fact.get("type"),
+        "facts[" + i + "].type",
+        "FACT|INFERENCE|HYPOTHESIS|PREDICTION|UNKNOWN"
+      );
+      requireDeclaredEnum(
+        fact.get("verificationStatus"),
+        "facts[" + i + "].verificationStatus",
+        "REPORTED|CORROBORATED|DISPUTED"
+      );
+    }
+  }
+
+  private static void requireDeclaredEnum(
+    Object declared,
+    String field,
+    String allowed
+  ) {
+    if (declared == null) return; // absent is the conservative default, not a lie
+    if (!(declared instanceof String value)) throw StageOutputException.schema(
+      field +
+      ": EXPECTED_ENUM(" +
+      allowed +
+      "), ACTUAL JSON " +
+      (declared instanceof Map<?, ?>
+        ? "OBJECT"
+        : declared instanceof List<?> ? "ARRAY" : declared.getClass().getSimpleName().toUpperCase(java.util.Locale.ROOT))
+    );
+    for (var permitted : allowed.split("\\|")) if (permitted.equals(value)) return;
+    throw StageOutputException.schema(
+      field +
+      ": EXPECTED_ENUM(" +
+      allowed +
+      "), ACTUAL " +
+      value +
+      " — an illegal enum is refused, never silently downgraded"
+    );
+  }
 
   private Artifacts<Fact> factsEnvelope(FactsEnvelope envelope, PipelineState state) {
     var facts = orEmpty(envelope.facts());
@@ -512,6 +742,16 @@ public class StageResponseReader {
     var validated = new ArrayList<Fact>();
     var spans = new HashSet<String>();
     for (var fact : facts) {
+      if (fact.type() != ClaimType.FACT) throw StageOutputException.schema(
+        "facts[].type: the fact stage may only report FACT, got " +
+        fact.type() +
+        " (STG-03)"
+      );
+      if (fact.confidence() != null && (fact.confidence() < 0 || fact.confidence() > 100)) {
+        throw StageOutputException.schema(
+          "facts[].confidence: must be a 0-100 judgment when present"
+        );
+      }
       requireText(fact.statement(), "facts[].statement");
       requireText(fact.reasoning(), "facts[].reasoning");
       if (fact.sourceRefs().isEmpty()) throw StageOutputException.schema(
@@ -716,19 +956,157 @@ public class StageResponseReader {
 
   private <T> Present<T> envelope(String raw, Class<T> type) {
     try {
-      return new Present<>(json.read(raw, type));
+      return new Present<>(json.read(raw, type), Optional.empty());
     } catch (RuntimeException notTheEnvelopeShape) {
-      return new Present<>(null);
+      return new Present<>(null, Optional.of(EnvelopeDiagnosis.of(notTheEnvelopeShape, type)));
     }
   }
 
-  private record Present<T>(T value) {
+  private record Present<T>(T value, Optional<EnvelopeDiagnosis> diagnosis) {
     boolean present() {
       return value != null;
     }
 
     T get() {
       return value;
+    }
+  }
+
+  /**
+   * A redacted, structural account of why an envelope could not be read.
+   *
+   * <p>It carries only the JSON field path, the expected Java type, the JSON type
+   * actually seen and a failure category. It never carries model output, a prompt,
+   * the source text or a credential, so it is safe to persist on a job.
+   *
+   * <p>Without it a field-level mismatch was reported as "the reply has no facts
+   * array", which hid the real cause and made a paid attempt undiagnosable.
+   */
+  public record EnvelopeDiagnosis(
+    String errorCode,
+    String fieldPath,
+    String expectedType,
+    String actualJsonType,
+    String failureCategory
+  ) {
+    static EnvelopeDiagnosis of(RuntimeException failure, Class<?> target) {
+      var simpleName = failure.getClass().getSimpleName();
+      var message = failure.getMessage() == null ? "" : failure.getMessage();
+      var path = jsonPath(failure, target);
+      var actual = jsonTypeOf(message);
+      var category = switch (simpleName) {
+        case "UnrecognizedPropertyException" -> "UNKNOWN_FIELD";
+        case "InvalidFormatException" -> "INVALID_VALUE";
+        case "MismatchedInputException" -> "WRONG_JSON_TYPE";
+        case "MissingRequiredPropertyException" -> "MISSING_REQUIRED";
+        case "JacksonException", "JsonParseException", "StreamReadException" -> "MALFORMED_JSON";
+        default -> "UNCLASSIFIED";
+      };
+      var expected = expectedTypeOf(failure, message);
+      var code = switch (category) {
+        case "UNKNOWN_FIELD" -> "ENVELOPE_UNKNOWN_FIELD";
+        case "INVALID_VALUE" -> invalidValueCode(expected);
+        case "WRONG_JSON_TYPE" -> "WRONG_JSON_TYPE".equals(jsonTypeOf(message))
+          ? "ENVELOPE_TYPE_MISMATCH"
+          : "ENVELOPE_EXPECTED_" + actual;
+        case "MISSING_REQUIRED" -> "ENVELOPE_MISSING_REQUIRED";
+        case "MALFORMED_JSON" -> "ENVELOPE_MALFORMED_JSON";
+        default -> "ENVELOPE_UNREADABLE";
+      };
+      return new EnvelopeDiagnosis(code, path, expected, actual, category);
+    }
+
+    /** An enum or UUID value that could not be represented as the expected type. */
+    private static String invalidValueCode(String expectedType) {
+      if (expectedType == null) return "ENVELOPE_INVALID_VALUE";
+      if (expectedType.endsWith("ProofStatus") || expectedType.endsWith("ClaimType")) {
+        return "ENVELOPE_INVALID_ENUM";
+      }
+      if (expectedType.endsWith("UUID")) return "ENVELOPE_INVALID_UUID";
+      return "ENVELOPE_INVALID_VALUE";
+    }
+
+    /** The JSON field path, from Jackson's own reference chain. */
+    private static String jsonPath(RuntimeException failure, Class<?> target) {
+      try {
+        if (failure instanceof tools.jackson.core.JacksonException jackson) {
+          var parts = new StringBuilder();
+          for (var ref : jackson.getPath()) {
+            if (ref.getPropertyName() != null) {
+              if (parts.length() > 0) parts.append('.');
+              parts.append(ref.getPropertyName());
+            } else if (ref.getIndex() >= 0) {
+              parts.append('[').append(ref.getIndex()).append(']');
+            }
+            // A reference carrying only a Java class is noise for an operator.
+          }
+          if (parts.length() > 0) return parts.toString();
+        }
+      } catch (RuntimeException unusablePath) {
+        // fall through: a path we cannot read is reported as unknown, never guessed
+      }
+      return "UNKNOWN";
+    }
+
+    /** The Java type Jackson was trying to build, when it names one. */
+    private static String expectedTypeOf(RuntimeException failure, String message) {
+      try {
+        if (
+          failure instanceof tools.jackson.databind.exc.MismatchedInputException mismatched &&
+          mismatched.getTargetType() != null
+        ) return mismatched.getTargetType().getSimpleName();
+      } catch (RuntimeException unusableType) {
+        // fall through to the message
+      }
+      var at = message.indexOf("of type `");
+      if (at >= 0) {
+        var end = message.indexOf('`', at + 9);
+        if (end > at) return simpleType(message.substring(at + 9, end));
+      }
+      var from = message.indexOf("Enum class ");
+      if (from >= 0) {
+        var end = message.indexOf(' ', from + 11);
+        return simpleType(end > from ? message.substring(from + 11, end) : message.substring(from + 11));
+      }
+      return "UNKNOWN";
+    }
+
+    /** A fully qualified Java type reduced to its simple name. */
+    private static String simpleType(String qualified) {
+      var trimmed = qualified.trim();
+      var dot = trimmed.lastIndexOf('.');
+      var name = dot >= 0 ? trimmed.substring(dot + 1) : trimmed;
+      return name.endsWith(";") ? name.substring(0, name.length() - 1) : name;
+    }
+
+    /** The JSON type actually encountered: a shape, never a value. */
+    private static String jsonTypeOf(String message) {
+      for (var pair : new String[][] {
+        { "from String", "STRING" },
+        { "from Object", "OBJECT" },
+        { "from Array", "ARRAY" },
+        { "from Boolean", "BOOLEAN" },
+        { "from Integer", "NUMBER" },
+        { "from Floating point", "NUMBER" },
+        { "from Null", "NULL" },
+      }) if (message.contains(pair[0])) return pair[1];
+      return "UNKNOWN";
+    }
+
+    /** A single line for a stage failure, with no model content in it. */
+    public String render() {
+      return (
+        errorCode +
+        " at " +
+        fieldPath +
+        " (expected " +
+        expectedType +
+        ", actual JSON " +
+        actualJsonType +
+        ", category " +
+        failureCategory +
+        ")"
+      );
     }
   }
 
@@ -742,17 +1120,67 @@ public class StageResponseReader {
    * silently coerced.
    */
   private StageOutputException wrongShape(String raw, String key) {
+    return wrongShape(raw, key, Optional.empty());
+  }
+
+  private StageOutputException wrongShape(
+    String raw,
+    String key,
+    Optional<EnvelopeDiagnosis> diagnosis
+  ) {
+    Map<String, Object> tree;
     try {
-      json.read(raw, Map.class);
+      tree = json.read(raw, Map.class);
     } catch (RuntimeException notJson) {
       return StageOutputException.malformed(
         "the model response is not decodable JSON"
       );
     }
+    // A structural hint, never a content dump: the top-level keys and the length
+    // are enough to tell a wrapper ({"facts":{"facts":[...]}}) from prose from a
+    // truncated reply, and the model's text stays out of the job record.
+    var keys = tree == null ? List.of() : List.copyOf(tree.keySet());
+    var shape = keys.isEmpty()
+      ? "an object with no keys"
+      : "top-level keys " + keys;
+    if (diagnosis.isPresent()) {
+      if (!keys.contains(key)) {
+        // The root itself is wrong: the expected key is absent. The field-level
+        // cause is reported as context, never as the headline.
+        return StageOutputException.schema(
+          "expected a JSON object with a '" +
+          key +
+          "' array (or a complete AnalysisResult snapshot); the reply was " +
+          shape +
+          " (" +
+          (raw == null ? 0 : raw.length()) +
+          " chars); first deserialization failure: " +
+          diagnosis.get().render()
+        );
+      }
+      // The root is right and the reply failed inside it: report the field-level
+      // cause, and the root shape only as context. This is the distinction between
+      // a wrong top-level structure and a field-level type mismatch.
+      return StageOutputException.schema(
+        "the reply's '" +
+        key +
+        "' array could not be read: " +
+        diagnosis.get().render() +
+        "; top-level keys " +
+        keys +
+        " (" +
+        (raw == null ? 0 : raw.length()) +
+        " chars)"
+      );
+    }
     return StageOutputException.schema(
       "expected a JSON object with a '" +
       key +
-      "' array (or a complete AnalysisResult snapshot)"
+      "' array (or a complete AnalysisResult snapshot); the reply was " +
+      shape +
+      " (" +
+      (raw == null ? 0 : raw.length()) +
+      " chars)"
     );
   }
 

@@ -38,7 +38,7 @@ class SynthesisBudgetTest {
         new ModelRequest(
           UUID.randomUUID(),
           ModelPurpose.SYNTHESIS,
-          "synthesis-v2",
+          "synthesis-v3",
           "",
           com.signalframe.ai.AiTestFixtures.news(),
           com.signalframe.ai.AiTestFixtures.profile("mock", "mock-v1"),
@@ -53,24 +53,41 @@ class SynthesisBudgetTest {
     return text.length() / 4;
   }
 
-  static Integer configuredSynthesisMaxTokens() {
+  /** A configured value and the environment variable that can override it. */
+  record Setting(String value, String overrideVariable) {}
+
+  static String rawSetting(String key) {
     try {
       var sources = new YamlPropertySourceLoader().load(
         "application.yml",
         new ClassPathResource("application.yml")
       );
       assertFalse(sources.isEmpty(), "application.yml must load");
-      var raw = sources
-        .getFirst()
-        .getProperty("ai.profiles[analysis.fast].max-tokens");
-      assertNotNull(
-        raw,
-        "ai.profiles[analysis.fast].max-tokens must be configured"
-      );
-      return Integer.valueOf(raw.toString().trim());
+      var raw = sources.getFirst().getProperty(key);
+      assertNotNull(raw, key + " must be configured");
+      return raw.toString().trim();
     } catch (java.io.IOException e) {
       throw new IllegalStateException("application.yml is unreadable", e);
     }
+  }
+
+  /**
+   * Resolves {@code ${VAR:default}} the way the deployment expects: the value is
+   * the documented default, and the variable name is the deployment's override.
+   */
+  static Setting setting(String key) {
+    var raw = rawSetting(key);
+    if (raw.startsWith("${") && raw.endsWith("}")) {
+      var body = raw.substring(2, raw.length() - 1);
+      int colon = body.indexOf(':');
+      assertTrue(colon > 0, key + " must be ${VAR:default}: " + raw);
+      return new Setting(body.substring(colon + 1).trim(), body.substring(0, colon).trim());
+    }
+    return new Setting(raw, null);
+  }
+
+  static int configuredSynthesisMaxTokens() {
+    return Integer.parseInt(setting("ai.profiles[analysis.fast].max-tokens").value());
   }
 
   @Test
@@ -80,6 +97,29 @@ class SynthesisBudgetTest {
       maxTokens >= 8192,
       "the synthesis ceiling must cover a reply plus its reasoning, was " + maxTokens
     );
+  }
+
+  /**
+   * The three knobs the metered rehearsal depends on must be overridable by
+   * environment without editing the file, and must keep their compatible defaults.
+   */
+  @Test
+  void theBudgetsAndRetryPolicyAreConfigurableWithCompatibleDefaults() {
+    var ceiling = setting("ai.profiles[analysis.fast].max-tokens");
+    assertEquals("AI_FAST_MAX_TOKENS", ceiling.overrideVariable());
+    assertEquals("8192", ceiling.value(), "the compatible default ceiling");
+
+    var timeout = setting("ai.profiles[analysis.fast].timeout");
+    assertEquals("AI_FAST_TIMEOUT", timeout.overrideVariable());
+    assertEquals("45", timeout.value(), "the compatible default bound");
+
+    var attempts = setting("ai.retry.max-attempts");
+    assertEquals("AI_RETRY_MAX_ATTEMPTS", attempts.overrideVariable());
+    assertEquals("2", attempts.value(), "the compatible default attempt count");
+
+    var repairs = setting("ai.retry.max-repair-attempts");
+    assertEquals("AI_RETRY_MAX_REPAIR_ATTEMPTS", repairs.overrideVariable());
+    assertEquals("1", repairs.value(), "the compatible default repair count");
   }
 
   @Test

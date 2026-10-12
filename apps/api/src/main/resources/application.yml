@@ -37,6 +37,53 @@ ai:
     user-agent: ${AI_CLIENT_USER_AGENT:SignalFrame/0.1.0}
     session-header-name: ${AI_SESSION_HEADER_NAME:x-opencode-session}
     session-header-enabled: ${AI_SESSION_HEADER_ENABLED:true}
+    # Optional reasoning effort, scoped by purpose rather than by profile, because
+    # two stages can share a profile while needing different reasoning budgets.
+    # Stage 1 must emit JSON, and a reasoning model that spends its whole
+    # completion ceiling thinking emits nothing at all (measured: finish_reason
+    # LENGTH with empty content at 8192). The value is passed through verbatim to
+    # the provider's own declared ladder; unset means send nothing, so the
+    # provider default is untouched unless a deployment asks for it.
+    #   ai.client.reasoning-effort.FACT_EXTRACTION=low
+    #   ai.client.reasoning-effort.SYNTHESIS=high
+  # How many provider requests one analysis may issue. max-attempts counts
+  # transport attempts per round; max-repair-attempts counts the extra round a
+  # schema/provenance failure is allowed. Setting max-attempts=1 and
+  # max-repair-attempts=0 makes a run single-shot: exactly one provider request,
+  # which is what a metered endpoint is rehearsed with.
+  retry:
+    max-attempts: ${AI_RETRY_MAX_ATTEMPTS:2}
+    max-repair-attempts: ${AI_RETRY_MAX_REPAIR_ATTEMPTS:1}
+    backoff-ms: ${AI_RETRY_BACKOFF_MS:250}
+  # Two-stage synthesis (opt-in via analysis.pipeline.mode=two-stage). Each stage
+  # has its own bounded retry/repair budget, so one stage can stay single-shot
+  # while the other is allowed a repair. Budgets (max-tokens, timeout) come from
+  # the profile each stage routes to by purpose: FACT_EXTRACTION for stage 1 and
+  # SYNTHESIS for stage 2, both configurable in ai.routes. Prompt versions live in
+  # resources/prompts/two-stage-facts and two-stage-reasoning.
+  two-stage:
+    facts:
+      max-attempts: ${AI_TWO_STAGE_FACTS_MAX_ATTEMPTS:${AI_RETRY_MAX_ATTEMPTS:2}}
+      max-repair-attempts: ${AI_TWO_STAGE_FACTS_MAX_REPAIR_ATTEMPTS:${AI_RETRY_MAX_REPAIR_ATTEMPTS:1}}
+      backoff-ms: ${AI_TWO_STAGE_FACTS_BACKOFF_MS:${AI_RETRY_BACKOFF_MS:250}}
+      max-tokens: ${AI_TWO_STAGE_FACTS_MAX_TOKENS:0}
+      timeout: ${AI_TWO_STAGE_FACTS_TIMEOUT:0}
+    reasoning:
+      max-attempts: ${AI_TWO_STAGE_REASONING_MAX_ATTEMPTS:${AI_RETRY_MAX_ATTEMPTS:2}}
+      max-repair-attempts: ${AI_TWO_STAGE_REASONING_MAX_REPAIR_ATTEMPTS:${AI_RETRY_MAX_REPAIR_ATTEMPTS:1}}
+      backoff-ms: ${AI_TWO_STAGE_REASONING_BACKOFF_MS:${AI_RETRY_BACKOFF_MS:250}}
+      max-tokens: ${AI_TWO_STAGE_REASONING_MAX_TOKENS:0}
+      timeout: ${AI_TWO_STAGE_REASONING_TIMEOUT:0}
+    # Optional per-stage budget overrides. 0 means "inherit the profile the stage
+    # routes to", which stays the default so nothing changes unless a deployment
+    # asks for it. max-tokens must be 128..32000 and timeout 1..120 (the
+    # ModelProfile contract bounds) or startup fails loudly.
+    # max-provider-calls is a hard per-analysis ceiling covering every attempt of
+    # both stages, including retry and repair.
+    # total-timeout-ms, when non-zero, is a per-analysis deadline: a stage that
+    # would start after it fails without making another request.
+    max-provider-calls: ${AI_TWO_STAGE_MAX_PROVIDER_CALLS:4}
+    total-timeout-ms: ${AI_TWO_STAGE_TOTAL_TIMEOUT_MS:0}
   routes:
     FAST_ANALYSIS: analysis.fast
     DEEP_ANALYSIS: analysis.deep
@@ -57,8 +104,16 @@ ai:
       # reasoning model plus a verbose real snapshot: the reply would be cut off
       # mid-object and rejected as schema-invalid. The reply and its reasoning
       # must both fit, which is what SynthesisBudgetTest pins.
-      max-tokens: 8192
-      timeout: 45
+      #
+      # Configurable per deployment: AI_FAST_MAX_TOKENS (default 8192, the
+      # compatible value). Raising it widens the completion budget but does not
+      # extend `timeout`, so a much larger ceiling can turn a truncation into a
+      # timeout.
+      max-tokens: ${AI_FAST_MAX_TOKENS:8192}
+      # Per-call bound in seconds, hard-capped at 120 by the ModelProfile
+      # contract. AI_FAST_TIMEOUT overrides it; a reasoning model generating up to
+      # max-tokens needs the bound to cover the whole generation.
+      timeout: ${AI_FAST_TIMEOUT:45}
       structured-output: true
       tool-calling: false
       enabled: true
