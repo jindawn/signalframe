@@ -83,7 +83,7 @@ public class TwoStageSynthesisService {
   static final int MIN_MAX_TOKENS = 128;
   static final int MAX_MAX_TOKENS = 32_000;
   static final int MIN_TIMEOUT = 1;
-  static final int MAX_TIMEOUT = 120;
+  static final int MAX_TIMEOUT = 600;
 
   private final ModelRetryPolicy factsPolicy;
   private final ModelRetryPolicy reasoningPolicy;

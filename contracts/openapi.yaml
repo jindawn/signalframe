@@ -2973,7 +2973,7 @@
           "timeout": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 120
+            "maximum": 600
           },
           "structuredOutput": {
             "type": "boolean"
