@@ -720,11 +720,15 @@ public class TwoStageSynthesisService {
         state
       )
       .value();
+    // A second-order effect derives from a first-order effect declared in this
+    // same reply, so the state has to carry the first-order effects before the
+    // derivation is validated — the same dependency-order rule the mechanism
+    // endpoints and the hypothesis references follow.
     var secondOrder = deps
       .reader()
       .secondOrderEffects(
         envelope("effects", parsed.secondOrderEffects(), List.of()),
-        state
+        state.withFirstOrderEffects(firstOrder)
       )
       .value();
     // One reply carries artifacts that reference each other, so the state has to

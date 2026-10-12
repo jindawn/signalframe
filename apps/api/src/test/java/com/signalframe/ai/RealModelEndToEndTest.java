@@ -478,8 +478,20 @@ class RealModelEndToEndTest {
       );
     assertEquals(PROVIDER, accepted.provider());
     assertEquals(MODEL, accepted.model());
-    assertEquals("synthesis-v3", accepted.promptVersion());
-    assertEquals(ModelPurpose.SYNTHESIS, accepted.purpose());
+    // The accepted run belongs to whichever topology is configured. The default
+    // draft mode makes one SYNTHESIS call with the monolithic prompt; the opt-in
+    // two-stage mode makes a fact call and a reasoning call, so the accepted run
+    // is one of those two prompts.
+    if ("two-stage".equals(env("ANALYSIS_PIPELINE_MODE"))) {
+      assertTrue(
+        accepted.promptVersion().startsWith("two-stage-"),
+        "the accepted run must come from the two-stage prompts: " +
+        accepted.promptVersion()
+      );
+    } else {
+      assertEquals("synthesis-v3", accepted.promptVersion());
+      assertEquals(ModelPurpose.SYNTHESIS, accepted.purpose());
+    }
     assertTrue(accepted.latencyMs() > 0, "latency must be measured");
     assertNull(accepted.errorType());
     assertNull(

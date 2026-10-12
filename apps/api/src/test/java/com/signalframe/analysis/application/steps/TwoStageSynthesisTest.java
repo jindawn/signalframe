@@ -779,7 +779,7 @@ class TwoStageSynthesisTest {
       serviceWithBudgets(gateway, runs, json, 99_999, 0, 0, 0, 4, 0L)
     );
     assertThrows(IllegalStateException.class, () ->
-      serviceWithBudgets(gateway, runs, json, 0, 500, 0, 0, 4, 0L)
+      serviceWithBudgets(gateway, runs, json, 0, 700, 0, 0, 4, 0L)
     );
   }
 
