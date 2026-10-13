@@ -38,11 +38,10 @@ the assembled snapshot and any number you put there is discarded. Do not present
 The reply shape and its size budget are specified at the end of this prompt and override anything here: read that
 contract before you decide how much to write.
 
-Falsification conditions must be decidable by a third party. For each condition give an observable that can be
-checked, an explicit decision boundary, and a comparison a stranger could apply without asking you what you meant.
-A boundary such as "if it does not work out" is not decidable and will be rejected (STG-12). If the source does not
-establish the threshold, name the threshold you would need and state that it is not established: never invent a
-number, a date or a criterion that the source does not support.
+Falsification conditions must be decidable by a third party: give an observable, and a boundary written as an
+explicit comparison — a number, >, <, =, or 超过/低于/之前/之后 (within/before/after). Prose without one is rejected
+(STG-12). If the source establishes no threshold, name the threshold you would need and say it is not established:
+never invent a number, a date or a criterion the source does not support.
 
 Size the reply to the evidence, not to the schema: an array with no supported content is the empty array [], which
 means "assessed, nothing supported" and is a valid and honest answer. Do not fill an array to look thorough, do not

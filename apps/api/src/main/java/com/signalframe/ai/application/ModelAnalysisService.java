@@ -206,7 +206,13 @@ public class ModelAnalysisService {
           )
         );
         try {
-          result = validator.parse(response.content(), news);
+          result = validator.parse(
+            SourceSpanResolver.resolve(
+              response.content(),
+              news.source().text()
+            ),
+            news
+          );
         } catch (
           IllegalArgumentException
           | tools.jackson.core.JacksonException invalid

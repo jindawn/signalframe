@@ -386,19 +386,20 @@ class TwoStageSynthesisTest {
       result.provenance().promptVersions().contains("two-stage-facts-v1")
     );
     assertTrue(
-      result.provenance().promptVersions().contains("two-stage-reasoning-v7")
+      result.provenance().promptVersions().contains("two-stage-reasoning-v8")
     );
   }
 
   // ---- 2/5. per-stage validation --------------------------------------------
 
   @Test
-  void aWrongOffsetInStageOneIsRejectedByTheProvenanceCheck() {
+  void aWrongOffsetOnAVerbatimQuoteIsDerivedInsteadOfRejected() {
     var json = PipelineFixtures.json();
     var news = news();
     var gateway = new ScriptedGateway();
-    // The quote is the whole text but the offsets stop one short, so the quote is
-    // no longer the substring those offsets address.
+    // The quote is the whole text but the offsets stop one short. The quote is the
+    // evidence, so its position is derived from where it actually occurs rather than
+    // failing an analysis over the arithmetic.
     gateway.reply(
       ModelPurpose.FACT_EXTRACTION,
       facts(
@@ -408,6 +409,36 @@ class TwoStageSynthesisTest {
         0,
         news.source().text().length() - 1
       )
+    );
+    gateway.reply(ModelPurpose.SYNTHESIS, validReasoning());
+    var runs = new PipelineFixtures.RecordingRuns();
+    var state = state(news);
+
+    var result = analyze(service(gateway, runs, json), state);
+    var ref = result.facts().getFirst().sourceRefs().getFirst();
+    assertEquals(0, ref.startOffset());
+    assertEquals(
+      news.source().text().length(),
+      ref.endOffset(),
+      "the derived span covers exactly the quote"
+    );
+    assertEquals(
+      news.source().text(),
+      news.source().text().substring(ref.startOffset(), ref.endOffset()),
+      "the stored span addresses the quote it carries"
+    );
+  }
+
+  @Test
+  void aQuoteThatIsNotInTheSourceIsStillRejected() {
+    var json = PipelineFixtures.json();
+    var news = news();
+    var gateway = new ScriptedGateway();
+    // A quote the source does not contain cannot be resolved, so the provenance
+    // check still rejects it: this rule never accepts a fabricated span.
+    gateway.reply(
+      ModelPurpose.FACT_EXTRACTION,
+      facts("原文中并不存在的一句话", news, "原文中并不存在的一句话", 0, 11)
     );
     gateway.reply(ModelPurpose.SYNTHESIS, validReasoning());
     var runs = new PipelineFixtures.RecordingRuns();
@@ -622,7 +653,7 @@ class TwoStageSynthesisTest {
       result.provenance().promptVersions()
     );
     assertTrue(
-      result.provenance().promptVersions().contains("two-stage-reasoning-v7")
+      result.provenance().promptVersions().contains("two-stage-reasoning-v8")
     );
   }
 
@@ -672,7 +703,7 @@ class TwoStageSynthesisTest {
       byPurpose.get(ModelPurpose.FACT_EXTRACTION).promptVersion()
     );
     assertEquals(
-      "two-stage-reasoning-v7",
+      "two-stage-reasoning-v8",
       byPurpose.get(ModelPurpose.SYNTHESIS).promptVersion()
     );
     for (var run : runs.all()) {

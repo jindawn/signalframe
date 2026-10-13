@@ -3,6 +3,7 @@ package com.signalframe.analysis.application.steps;
 import com.signalframe.ai.application.ModelRouter;
 import com.signalframe.ai.domain.*;
 import com.signalframe.contract.*;
+import com.signalframe.shared.SourceSpanResolver;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
@@ -185,7 +186,15 @@ public class StageModelClient {
           );
         }
         try {
-          var parsed = parser.parse(response.content());
+          // The quote is the evidence and the offsets are bookkeeping: resolve the
+          // bookkeeping against the analyzed text before the protocol check sees it.
+          // A quote that is not verbatim is untouched and still rejected.
+          var parsed = parser.parse(
+            SourceSpanResolver.resolve(
+              response.content(),
+              call.news().source().text()
+            )
+          );
           audit(call, profile, response, startedAt, "SUCCEEDED", null);
           return parsed;
         } catch (StageOutputException invalid) {
