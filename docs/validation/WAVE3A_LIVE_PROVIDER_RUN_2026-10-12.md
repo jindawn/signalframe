@@ -278,3 +278,50 @@ strict tier 断言的事实（通过时全部成立）：facts 带精确原文 s
 ### 10.5 仍未解决
 
 `STG-12` 与"原文未确立阈值时不得编造数字"之间的张力仍然存在，本轮**未改动校验器**。已按校验器认可的形式收紧 prompt（必须写成显式比较：数字、`>`/`<`/`=`、或 超过/低于/之前/之后），把通过率从 2/4 提到 3/4，但模型仍偶有不遵从。彻底解决需要在"放宽该校验"与"接受偶发失败"之间做人工取舍。
+
+---
+
+## 11. 第三处缺口：模型不知道当前时间（STG-14.1）
+
+### 11.1 现象
+
+用户在本地以两阶段模式提交一条真实新闻（任务 `4350ff7f`，总耗时 9 分 22 秒）：
+
+| 调用 | 结果 | 耗时 | 输出 token |
+| --- | --- | --- | --- |
+| stage 1 抽事实 | **SUCCEEDED** | 107.8 s | 12,575 |
+| stage 2 第 1 次 | FAILED / TRANSPORT | 103.3 s | — |
+| stage 2 第 2 次 | FAILED / OUTPUT_INVALID | 107.3 s | 16,147 |
+| stage 2 第 3 次 | FAILED / OUTPUT_INVALID | 136.2 s | 21,671 |
+| stage 2 第 4 次 | FAILED / OUTPUT_INVALID | 106.3 s | 16,426 |
+
+最终错误：`predictions[]: expectedBy must be in the future relative to snapshot creation (STG-14.1)`。
+
+两点值得记录：**stage 1 首次成功**（§10 的 span 推导生效，此前它必然死在 span 上）；而 stage 2 的失败换成了日期规则。
+
+### 11.2 根因
+
+校验器要求 `predictions[].expectedBy` 晚于 `state.snapshotCreatedAt()`，但装配 stage-2 prompt 时**从未把该时刻（或任何"当前时间"）告知模型**。模型只能凭自身训练窗口推断日期，必然落在快照时间之前——**规则要求未来，却不告诉它现在**。
+
+### 11.3 修复
+
+在 `reasoningPromptText` 中随 prompt 一并给出参考时刻，与既有"告知被分析来源 id"的做法同构：
+
+```
+The snapshot was created at <instant> (UTC). Any predictions[].expectedBy must be
+strictly after that instant: choose a date in the future relative to it, not one
+from the source's own era.
+```
+
+未改动校验器，也未放宽任何规则。
+
+### 11.4 验证
+
+| 项 | 结果 |
+| --- | --- |
+| 离线全套 | **669 tests, 0 failures, 8 skipped** |
+| 真实 strict tier | **2 次运行均 5 tests, 0 failures** |
+
+### 11.5 口径
+
+至此已消除的失败原因：span 偏移算术（§10）、`mechanisms[].from` 与 `effects[].derivedFromRefs` 的校验状态顺序（§3、§9.2）、`expectedBy` 缺少参考时刻（§11）。**仍开放**的是 `STG-12`（判定边界的比较形式），其彻底解决需人工在"放宽校验"与"接受偶发失败"之间取舍（§10.5）。本文档仍不构成审查或签署。

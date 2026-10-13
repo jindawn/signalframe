@@ -1027,6 +1027,16 @@ public class TwoStageSynthesisService {
       .append("\nThe analyzed source id is ")
       .append(state.news().source().id())
       .append(". Every sourceRefs[].sourceId you emit must be exactly this id: it is the only source you may cite.\n")
+      // The reader requires predictions[].expectedBy to be after the snapshot creation
+      // instant (STG-14.1), and the prompt never said when that instant was, so a model
+      // could only guess a date from its own training window — which is in the past.
+      // Stating the reference instant is what makes the requirement satisfiable.
+      .append("\nThe snapshot was created at ")
+      .append(state.snapshotCreatedAt())
+      .append(
+        " (UTC). Any predictions[].expectedBy must be strictly after that instant: " +
+        "choose a date in the future relative to it, not one from the source's own era.\n"
+      )
       .append("\nVALIDATED FACTS from stage 1 (these ids are the only fact references you may cite; each span is verbatim source text):\n");
     for (var fact : state.facts()) {
       var span = fact.sourceRefs().isEmpty() ? null : fact.sourceRefs().getFirst();
